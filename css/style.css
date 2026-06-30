@@ -1,0 +1,504 @@
+/* ============================================================
+   STYLE.CSS — Identité visuelle "Établi"
+   Palette: bleu profond (accent/action), gris ardoise (structure),
+   blanc cassé (fond). Typo: Inter (UI) + JetBrains Mono (données).
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* Palette */
+  --bleu-900: #0f2942;
+  --bleu-700: #1d4e7a;
+  --bleu-600: #2563a3;
+  --bleu-500: #3b7bc4;
+  --bleu-100: #e8f1fa;
+
+  --gris-900: #1a1f26;
+  --gris-700: #3f4750;
+  --gris-500: #6b7480;
+  --gris-300: #b8c0c9;
+  --gris-200: #dde2e7;
+  --gris-100: #eef1f4;
+  --blanc: #fcfdfe;
+
+  --succes: #2f7d5e;
+  --alerte: #b5532a;
+
+  --font-ui: 'Inter', -apple-system, sans-serif;
+  --font-data: 'JetBrains Mono', monospace;
+
+  --rayon: 6px;
+  --ombre: 0 1px 3px rgba(15, 41, 66, 0.08), 0 1px 2px rgba(15, 41, 66, 0.06);
+  --ombre-hover: 0 4px 12px rgba(15, 41, 66, 0.12);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-ui);
+  background: var(--gris-100);
+  color: var(--gris-900);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ============================================================
+   STRUCTURE GÉNÉRALE : sidebar + contenu
+   ============================================================ */
+.app-shell {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: var(--bleu-900);
+  color: var(--gris-200);
+  display: flex;
+  flex-direction: column;
+  padding: 24px 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.sidebar__brand {
+  padding: 0 20px 24px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 16px;
+}
+
+.sidebar__brand-mark {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--bleu-500);
+  text-transform: uppercase;
+}
+
+.sidebar__brand-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--blanc);
+  margin-top: 4px;
+}
+
+.sidebar__nav { display: flex; flex-direction: column; gap: 2px; padding: 0 12px; }
+
+.sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--rayon);
+  color: var(--gris-300);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 13.5px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sidebar__link:hover { background: rgba(255,255,255,0.06); color: var(--blanc); }
+
+.sidebar__link.actif {
+  background: var(--bleu-600);
+  color: var(--blanc);
+}
+
+.sidebar__link svg { width: 17px; height: 17px; flex-shrink: 0; }
+
+.sidebar__footer {
+  margin-top: auto;
+  padding: 16px 20px 0 20px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  font-size: 11.5px;
+  color: var(--gris-500);
+}
+
+.contenu {
+  padding: 32px 40px;
+  max-width: 1400px;
+}
+
+/* ============================================================
+   EN-TÊTE DE PAGE
+   ============================================================ */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 28px;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.page-header__eyebrow {
+  font-family: var(--font-data);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--bleu-600);
+  margin-bottom: 4px;
+}
+
+.page-header h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--gris-900);
+}
+
+.page-header__sub {
+  color: var(--gris-500);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+/* ============================================================
+   BOUTONS
+   ============================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border-radius: var(--rayon);
+  border: none;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+  text-decoration: none;
+}
+
+.btn-primaire { background: var(--bleu-600); color: var(--blanc); box-shadow: var(--ombre); }
+.btn-primaire:hover { background: var(--bleu-700); box-shadow: var(--ombre-hover); }
+
+.btn-secondaire { background: var(--blanc); color: var(--gris-700); border: 1px solid var(--gris-300); }
+.btn-secondaire:hover { background: var(--gris-100); border-color: var(--gris-500); }
+
+.btn-danger { background: var(--blanc); color: var(--alerte); border: 1px solid #e0c1b3; }
+.btn-danger:hover { background: #fdf3ef; }
+
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ============================================================
+   FILTRES (menus déroulants)
+   ============================================================ */
+.barre-filtres {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+  align-items: center;
+}
+
+.filtre-groupe { display: flex; flex-direction: column; gap: 4px; }
+
+.filtre-groupe label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gris-500);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+select, input[type="text"], input[type="number"], input[type="date"], input[type="datetime-local"], textarea {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--gris-300);
+  border-radius: var(--rayon);
+  background: var(--blanc);
+  color: var(--gris-900);
+  min-width: 160px;
+}
+
+select:focus, input:focus, textarea:focus {
+  outline: none;
+  border-color: var(--bleu-500);
+  box-shadow: 0 0 0 3px var(--bleu-100);
+}
+
+.recherche-input { min-width: 240px; }
+
+/* ============================================================
+   TABLEAU INVENTAIRE
+   ============================================================ */
+.tableau-conteneur {
+  background: var(--blanc);
+  border-radius: 10px;
+  box-shadow: var(--ombre);
+  overflow: hidden;
+  border: 1px solid var(--gris-200);
+}
+
+table { width: 100%; border-collapse: collapse; }
+
+thead th {
+  background: var(--gris-100);
+  text-align: left;
+  padding: 11px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--gris-700);
+  border-bottom: 1px solid var(--gris-200);
+  white-space: nowrap;
+}
+
+tbody tr { border-bottom: 1px solid var(--gris-100); cursor: pointer; transition: background 0.12s; }
+tbody tr:hover { background: var(--bleu-100); }
+tbody tr:last-child { border-bottom: none; }
+
+tbody td { padding: 11px 14px; font-size: 13px; vertical-align: middle; }
+
+.cell-ref { font-family: var(--font-data); font-weight: 600; color: var(--bleu-700); }
+.cell-photo-mini {
+  width: 38px; height: 38px; border-radius: 5px; object-fit: cover;
+  border: 1px solid var(--gris-200); background: var(--gris-100);
+}
+.cell-photo-vide {
+  width: 38px; height: 38px; border-radius: 5px; background: var(--gris-100);
+  display: flex; align-items: center; justify-content: center; color: var(--gris-300);
+  border: 1px solid var(--gris-200); font-size: 14px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-dispo { background: #e4f3ec; color: var(--succes); }
+.badge-emprunte { background: #fbe9e1; color: var(--alerte); }
+.badge-categorie { background: var(--bleu-100); color: var(--bleu-700); }
+
+.qte-faible { color: var(--alerte); font-weight: 700; }
+
+.etat-vide {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--gris-500);
+}
+.etat-vide__titre { font-size: 15px; font-weight: 600; color: var(--gris-700); margin-bottom: 6px; }
+
+/* ============================================================
+   FICHE PRODUIT
+   ============================================================ */
+.fiche-produit {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
+.fiche-photo {
+  background: var(--blanc);
+  border-radius: 10px;
+  border: 1px solid var(--gris-200);
+  box-shadow: var(--ombre);
+  overflow: hidden;
+}
+.fiche-photo img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.fiche-photo__vide {
+  width: 100%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+  color: var(--gris-300); font-size: 40px; background: var(--gris-100);
+}
+.fiche-photo__upload { padding: 14px; border-top: 1px solid var(--gris-200); }
+.fiche-photo__upload label {
+  display: block; font-size: 11px; font-weight: 600; color: var(--gris-500);
+  text-transform: uppercase; margin-bottom: 6px;
+}
+
+.fiche-carte {
+  background: var(--blanc);
+  border-radius: 10px;
+  border: 1px solid var(--gris-200);
+  box-shadow: var(--ombre);
+  padding: 24px 28px;
+  margin-bottom: 20px;
+}
+
+.fiche-carte h2 {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bleu-700);
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--gris-100);
+}
+
+.grille-attributs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px 24px;
+}
+
+.attribut__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gris-500);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 3px;
+}
+.attribut__valeur { font-size: 14px; color: var(--gris-900); }
+.attribut__valeur.mono { font-family: var(--font-data); }
+.attribut__valeur a { color: var(--bleu-600); }
+
+.fiche-titre-zone { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; gap: 16px; }
+
+/* ============================================================
+   FORMULAIRES / MODALES
+   ============================================================ */
+.overlay {
+  position: fixed; inset: 0; background: rgba(15, 41, 66, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100; padding: 20px;
+}
+.overlay[hidden] { display: none; }
+
+.modale {
+  background: var(--blanc);
+  border-radius: 10px;
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 50px rgba(15,41,66,0.25);
+}
+
+.modale__header {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--gris-200);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky; top: 0; background: var(--blanc); z-index: 1;
+}
+.modale__header h3 { font-size: 16px; font-weight: 700; }
+.modale__fermer { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--gris-500); line-height: 1; }
+
+.modale__corps { padding: 20px 24px; }
+.modale__pied { padding: 16px 24px; border-top: 1px solid var(--gris-200); display: flex; justify-content: flex-end; gap: 10px; }
+
+.champ { margin-bottom: 16px; display: flex; flex-direction: column; gap: 5px; }
+.champ label { font-size: 12.5px; font-weight: 600; color: var(--gris-700); }
+.champ select, .champ input, .champ textarea { width: 100%; }
+.champ-ligne { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.champ-aide { font-size: 11.5px; color: var(--gris-500); }
+textarea { resize: vertical; min-height: 70px; font-family: var(--font-ui); }
+
+/* ============================================================
+   HISTORIQUE / RÉSERVATIONS — liste
+   ============================================================ */
+.liste-historique { display: flex; flex-direction: column; gap: 10px; }
+
+.ligne-historique {
+  background: var(--blanc);
+  border: 1px solid var(--gris-200);
+  border-radius: 8px;
+  padding: 14px 18px;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  gap: 18px;
+  align-items: center;
+  box-shadow: var(--ombre);
+}
+
+.ligne-historique__statut { width: 8px; height: 8px; border-radius: 50%; }
+.statut-actif { background: var(--succes); }
+.statut-passe { background: var(--gris-300); }
+.statut-futur { background: var(--bleu-500); }
+
+.ligne-historique__produit { font-weight: 600; }
+.ligne-historique__produit a { color: var(--gris-900); text-decoration: none; }
+.ligne-historique__produit a:hover { color: var(--bleu-600); }
+.ligne-historique__meta { font-size: 12px; color: var(--gris-500); margin-top: 2px; }
+
+.ligne-historique__dates { font-family: var(--font-data); font-size: 12.5px; color: var(--gris-700); text-align: right; }
+.ligne-historique__personne { font-size: 13px; font-weight: 500; text-align: right; }
+.ligne-historique__projet { font-size: 12px; color: var(--gris-500); text-align: right; }
+
+/* ============================================================
+   CALENDRIER
+   ============================================================ */
+.calendrier-entete {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;
+}
+.calendrier-entete__titre { font-size: 17px; font-weight: 700; }
+.calendrier-nav { display: flex; gap: 8px; }
+
+.grille-calendrier {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  background: var(--gris-200);
+  border: 1px solid var(--gris-200);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--ombre);
+}
+
+.jour-entete {
+  background: var(--gris-700);
+  color: var(--blanc);
+  text-align: center;
+  padding: 8px 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.jour-case {
+  background: var(--blanc);
+  min-height: 100px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.jour-case.hors-mois { background: var(--gris-100); }
+.jour-case__numero { font-size: 12px; font-weight: 600; color: var(--gris-500); }
+.jour-case.aujourdhui .jour-case__numero {
+  background: var(--bleu-600); color: var(--blanc); width: 20px; height: 20px;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+}
+
+.evenement-resa {
+  background: var(--bleu-100);
+  color: var(--bleu-700);
+  font-size: 10.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  border-left: 2px solid var(--bleu-600);
+}
+
+/* ============================================================
+   UTILITAIRES
+   ============================================================ */
+.flex-entre { display: flex; justify-content: space-between; align-items: center; }
+.mt-16 { margin-top: 16px; }
+.mb-16 { margin-bottom: 16px; }
+.texte-discret { color: var(--gris-500); font-size: 12.5px; }
+.loader { text-align: center; padding: 40px; color: var(--gris-500); font-size: 13px; }
+
+@media (max-width: 900px) {
+  .app-shell { grid-template-columns: 1fr; }
+  .sidebar { position: relative; height: auto; }
+  .fiche-produit { grid-template-columns: 1fr; }
+  .grille-attributs { grid-template-columns: 1fr; }
+}

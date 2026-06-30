@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Historique — Gestion Atelier</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+  <div id="sidebar-zone"></div>
+
+  <main class="contenu">
+    <div class="page-header">
+      <div>
+        <div class="page-header__eyebrow">Suivi des emprunts</div>
+        <h1>Historique des réservations</h1>
+        <div class="page-header__sub" id="compteur-resultats">Chargement…</div>
+      </div>
+    </div>
+
+    <div class="barre-filtres">
+      <div class="filtre-groupe">
+        <label>Recherche</label>
+        <input type="text" id="filtre-recherche" class="recherche-input" placeholder="Référence, projet, personne…">
+      </div>
+      <div class="filtre-groupe">
+        <label>Statut</label>
+        <select id="filtre-statut">
+          <option value="">Tous</option>
+          <option value="actif">En cours</option>
+          <option value="futur">À venir</option>
+          <option value="passe">Terminé</option>
+        </select>
+      </div>
+      <div class="filtre-groupe">
+        <label>Personne</label>
+        <select id="filtre-personne">
+          <option value="">Toutes</option>
+        </select>
+      </div>
+      <div class="filtre-groupe">
+        <label>Trier par</label>
+        <select id="filtre-tri">
+          <option value="recent">Date de début (récent d'abord)</option>
+          <option value="ancien">Date de début (ancien d'abord)</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="zone-historique">
+      <div class="loader">Chargement de l'historique…</div>
+    </div>
+  </main>
+</div>
+
+<script type="module" src="js/historique.js"></script>
+</body>
+</html>

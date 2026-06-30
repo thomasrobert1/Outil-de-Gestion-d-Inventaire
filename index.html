@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inventaire — Gestion Atelier</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+  <div id="sidebar-zone"></div>
+
+  <main class="contenu">
+    <div class="page-header">
+      <div>
+        <div class="page-header__eyebrow">Base de données</div>
+        <h1>Inventaire</h1>
+        <div class="page-header__sub" id="compteur-resultats">Chargement…</div>
+      </div>
+      <button class="btn btn-primaire" id="btn-ajouter">
+        + Ajouter un composant / outil
+      </button>
+    </div>
+
+    <div class="barre-filtres">
+      <div class="filtre-groupe">
+        <label>Recherche</label>
+        <input type="text" id="filtre-recherche" class="recherche-input" placeholder="Référence, description, n° série…">
+      </div>
+      <div class="filtre-groupe">
+        <label>Catégorie</label>
+        <select id="filtre-categorie">
+          <option value="">Toutes</option>
+        </select>
+      </div>
+      <div class="filtre-groupe">
+        <label>Localisation</label>
+        <select id="filtre-localisation">
+          <option value="">Toutes</option>
+        </select>
+      </div>
+      <div class="filtre-groupe">
+        <label>Ligne de crédit</label>
+        <select id="filtre-ligne-credit">
+          <option value="">Toutes</option>
+        </select>
+      </div>
+      <div class="filtre-groupe">
+        <label>Disponibilité</label>
+        <select id="filtre-disponibilite">
+          <option value="">Toutes</option>
+          <option value="dispo">Disponible</option>
+          <option value="emprunte">Actuellement emprunté</option>
+        </select>
+      </div>
+      <div class="filtre-groupe">
+        <label>Regrouper par</label>
+        <select id="filtre-groupement">
+          <option value="">Aucun regroupement</option>
+          <option value="categorie">Catégorie</option>
+          <option value="localisation">Localisation</option>
+          <option value="ligneCredit">Ligne de crédit</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="zone-tableau">
+      <div class="loader">Chargement de l'inventaire…</div>
+    </div>
+  </main>
+</div>
+
+<!-- ============ MODALE AJOUT / ÉDITION COMPOSANT ============ -->
+<div class="overlay" id="modale-composant" hidden>
+  <div class="modale">
+    <div class="modale__header">
+      <h3 id="modale-composant-titre">Ajouter un composant / outil</h3>
+      <button class="modale__fermer" data-fermer-modale="modale-composant">&times;</button>
+    </div>
+    <div class="modale__corps">
+      <form id="form-composant">
+        <input type="hidden" id="f-id">
+
+        <div class="champ">
+          <label>Référence produit *</label>
+          <input type="text" id="f-reference" required placeholder="ex: RES-10K-0805">
+        </div>
+
+        <div class="champ">
+          <label>Description *</label>
+          <textarea id="f-description" required placeholder="Description courte et utile"></textarea>
+        </div>
+
+        <div class="champ-ligne">
+          <div class="champ">
+            <label>Catégorie *</label>
+            <select id="f-categorie" required></select>
+          </div>
+          <div class="champ">
+            <label>Localisation</label>
+            <select id="f-localisation">
+              <option value="">Sélectionner une localisation</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="champ-ligne">
+          <div class="champ">
+            <label>Quantité *</label>
+            <input type="number" id="f-quantite" min="0" required value="1">
+          </div>
+          <div class="champ">
+            <label>Prix unitaire (€)</label>
+            <input type="number" id="f-prix" min="0" step="0.01" placeholder="0.00">
+          </div>
+        </div>
+
+        <div class="champ-ligne">
+          <div class="champ">
+            <label>Numéro de série</label>
+            <input type="text" id="f-numero-serie" placeholder="Si applicable">
+          </div>
+          <div class="champ">
+            <label>Ligne de crédit / appartenance</label>
+            <select id="f-ligne-credit"></select>
+          </div>
+        </div>
+
+        <div class="champ">
+          <label>URL fournisseur / fiche technique</label>
+          <input type="text" id="f-url" placeholder="https://…">
+        </div>
+
+        <div class="champ">
+          <label>Photo</label>
+          <input type="file" id="f-photo" accept="image/*">
+          <span class="champ-aide">L'image sera téléversée vers Firebase Storage.</span>
+        </div>
+
+        <div class="champ">
+          <label>Commentaire</label>
+          <textarea id="f-commentaire" placeholder="Notes diverses, état, particularités…"></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modale__pied">
+      <button class="btn btn-secondaire" data-fermer-modale="modale-composant">Annuler</button>
+      <button class="btn btn-primaire" id="btn-enregistrer-composant">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/inventaire.js"></script>
+</body>
+</html>
