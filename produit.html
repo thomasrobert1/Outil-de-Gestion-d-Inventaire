@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fiche produit — Gestion Atelier</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+  <div id="sidebar-zone"></div>
+
+  <main class="contenu">
+    <a href="index.html" style="color:var(--bleu-600);font-size:13px;text-decoration:none;font-weight:600;display:inline-block;margin-bottom:16px;">&larr; Retour à l'inventaire</a>
+
+    <div id="zone-fiche">
+      <div class="loader">Chargement de la fiche…</div>
+    </div>
+  </main>
+</div>
+
+<!-- ============ MODALE ÉDITION COMPOSANT ============ -->
+<div class="overlay" id="modale-edition-composant" hidden>
+  <div class="modale">
+    <div class="modale__header">
+      <h3 id="modale-edition-composant-titre">Modifier le composant</h3>
+      <button class="modale__fermer" data-fermer-modale="modale-edition-composant">&times;</button>
+    </div>
+    <div class="modale__corps">
+      <form id="form-edition-composant">
+        <input type="hidden" id="edit-id">
+
+        <div class="champ">
+          <label>Référence produit *</label>
+          <input type="text" id="edit-reference" required>
+        </div>
+
+        <div class="champ">
+          <label>Description *</label>
+          <textarea id="edit-description" required></textarea>
+        </div>
+
+        <div class="champ-ligne">
+          <div class="champ">
+            <label>Catégorie *</label>
+            <select id="edit-categorie" required></select>
+          </div>
+          <div class="champ">
+            <label>Localisation</label>
+            <input type="text" id="edit-localisation" placeholder="Ex. Étagère A1">
+          </div>
+        </div>
+
+        <div class="champ-ligne">
+          <div class="champ">
+            <label>Quantité *</label>
+            <input type="number" id="edit-quantite" min="0" required value="1">
+          </div>
+          <div class="champ">
+            <label>Prix unitaire (€)</label>
+            <input type="number" id="edit-prix" min="0" step="0.01" placeholder="0.00">
+          </div>
+        </div>
+
+        <div class="champ-ligne">
+          <div class="champ">
+            <label>Numéro de série</label>
+            <input type="text" id="edit-numero-serie" placeholder="Si applicable">
+          </div>
+          <div class="champ">
+            <label>Ligne de crédit / appartenance</label>
+            <select id="edit-ligne-credit"></select>
+          </div>
+        </div>
+
+        <div class="champ">
+          <label>URL fournisseur / fiche technique</label>
+          <input type="text" id="edit-url" placeholder="https://…">
+        </div>
+
+        <div class="champ">
+          <label>Photo</label>
+          <input type="file" id="edit-photo" accept="image/*">
+          <span class="champ-aide">Une nouvelle image remplacera l’ancienne si vous en choisissez une.</span>
+        </div>
+
+        <div class="champ">
+          <label>Commentaire</label>
+          <textarea id="edit-commentaire" placeholder="Notes diverses, état, particularités…"></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modale__pied">
+      <button class="btn btn-secondaire" data-fermer-modale="modale-edition-composant">Annuler</button>
+      <button class="btn btn-primaire" id="btn-enregistrer-edition">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODALE RÉSERVATION ============ -->
+<div class="overlay" id="modale-reservation" hidden>
+  <div class="modale">
+    <div class="modale__header">
+      <h3 id="modale-reservation-titre">Réserver cet élément</h3>
+      <button class="modale__fermer" data-fermer-modale="modale-reservation">&times;</button>
+    </div>
+    <div class="modale__corps">
+      <form id="form-reservation">
+        <input type="hidden" id="r-reservation-id">
+        <div class="champ-ligne">
+          <div class="champ">
+            <label>Date de début *</label>
+            <input type="date" id="r-date-debut" required>
+          </div>
+          <div class="champ">
+            <label>Date de fin / rendu</label>
+            <input type="date" id="r-date-fin">
+            <small class="texte-discret">Facultatif, laisser vide si la date de rendu n'est pas encore définie.</small>
+          </div>
+        </div>
+        <div class="champ-ligne">
+          <div class="champ">
+            <label>Quantité empruntée *</label>
+            <input type="number" id="r-quantite" min="1" value="1" required>
+          </div>
+        </div>
+        <div class="champ">
+          <label>Emprunté par *</label>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select id="r-personne" required style="flex:1;min-width:220px;">
+              <option value="">— Sélectionner —</option>
+            </select>
+            <button type="button" class="btn btn-secondaire btn-sm" data-ajouter-membre>Ajouter</button>
+          </div>
+        </div>
+        <div class="champ">
+          <label>Projet associé</label>
+          <input type="text" id="r-projet" placeholder="ex: Refonte ligne 3, Maquette client X…">
+        </div>
+        <div class="champ">
+          <label>Commentaire</label>
+          <textarea id="r-commentaire" placeholder="Précisions sur l'usage prévu…"></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modale__pied">
+      <button class="btn btn-secondaire" data-fermer-modale="modale-reservation">Annuler</button>
+      <button class="btn btn-primaire" id="btn-confirmer-reservation">Confirmer la réservation</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/produit.js"></script>
+</body>
+</html>
