@@ -69,7 +69,7 @@ export const CATEGORIES = [
   "Consommables",
   "Autre",
   "Manuels / Documentation",
-  "Lentille"
+  "Lentille / Optique"
 ];
 
 
