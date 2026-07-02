@@ -63,12 +63,13 @@ export const CATEGORIES = [
   "Composants électroniques",
   "Outils à main",
   "Protection / Sécurité",
-  "Nettoayage / Entretien",
+  "Nettoyage / Entretien",
   "Câblage",
   "Fixation",
   "Consommables",
   "Autre",
-  "Manuels / Documentation"
+  "Manuels / Documentation",
+  "Lentille"
 ];
 
 
