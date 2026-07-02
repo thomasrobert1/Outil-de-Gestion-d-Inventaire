@@ -62,13 +62,15 @@ export const PERSONNES = [
 export const CATEGORIES = [
   "Composants électroniques",
   "Outils à main",
-  "Outils électroportatifs",
-  "Visserie / Fixations",
+  "Protection / Sécurité",
+  "Nettoayage / Entretien",
   "Câblage",
-  "Mesure / Métrologie",
+  "Fixation",
   "Consommables",
-  "Autre"
+  "Autre",
+  "Manuels / Documentation"
 ];
+
 
 export const LIGNES_CREDIT = [
   "Atelier général",
