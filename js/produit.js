@@ -319,9 +319,15 @@ document.getElementById("btn-enregistrer-edition").addEventListener("click", asy
       ...(photoUrl ? { photoUrl } : {})
     };
 
-    await updateDoc(doc(db, "composants", COMPOSANT_ACTUEL.id), donnees);
-    modaleEdition.hidden = true;
-    await chargerFiche();
+    // Si la quantité est réduite à 0, supprimer le composant
+    if (quantite === 0) {
+      await deleteDoc(doc(db, "composants", COMPOSANT_ACTUEL.id));
+      window.location.href = "index.html";
+    } else {
+      await updateDoc(doc(db, "composants", COMPOSANT_ACTUEL.id), donnees);
+      modaleEdition.hidden = true;
+      await chargerFiche();
+    }
   } catch (err) {
     console.error(err);
     alert("Erreur lors de la modification : " + err.message);
@@ -381,9 +387,15 @@ async function supprimerQuantiteComposant() {
   if (!confirmation) return;
 
   try {
-    await updateDoc(doc(db, "composants", COMPOSANT_ACTUEL.id), { quantite: nouvelleQuantite });
-    await chargerFiche();
-    alert(nouvelleQuantite === 0 ? "Le stock a été vidé." : `Le stock a été réduit à ${nouvelleQuantite} unité(s).`);
+    if (nouvelleQuantite === 0) {
+      // Si la quantité devient 0, supprimer le composant
+      await deleteDoc(doc(db, "composants", COMPOSANT_ACTUEL.id));
+      window.location.href = "index.html";
+    } else {
+      await updateDoc(doc(db, "composants", COMPOSANT_ACTUEL.id), { quantite: nouvelleQuantite });
+      await chargerFiche();
+      alert(`Le stock a été réduit à ${nouvelleQuantite} unité(s).`);
+    }
   } catch (err) {
     console.error(err);
     alert("Erreur lors de la suppression : " + err.message);
