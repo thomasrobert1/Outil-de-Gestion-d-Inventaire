@@ -2,7 +2,7 @@
 // INVENTAIRE.JS — Logique de la page d'inventaire
 // ============================================================
 import {
-  db, storage, collection, getDocs, addDoc, updateDoc, doc,
+  db, storage, collection, getDocs, addDoc, updateDoc, deleteDoc, doc,
   ref, uploadBytes, getDownloadURL, query, orderBy,
   PERSONNES, CATEGORIES, LIGNES_CREDIT
 } from "./firebase-config.js";
@@ -293,7 +293,12 @@ document.getElementById("btn-enregistrer-composant").addEventListener("click", a
 
     const idExistant = document.getElementById("f-id").value;
     if (idExistant) {
-      await updateDoc(doc(db, "composants", idExistant), donnees);
+      if (quantite === 0) {
+        // Si la quantité est 0, supprimer le composant
+        await deleteDoc(doc(db, "composants", idExistant));
+      } else {
+        await updateDoc(doc(db, "composants", idExistant), donnees);
+      }
     } else {
       await addDoc(collection(db, "composants"), donnees);
     }
