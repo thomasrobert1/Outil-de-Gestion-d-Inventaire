@@ -25,10 +25,20 @@ function remplirSelect(select, valeurs, placeholderConserve = true) {
   select.innerHTML = optionsActuelles.concat(options).join("");
 }
 
-remplirSelect(document.getElementById("f-categorie"), CATEGORIES, false);
-remplirSelect(document.getElementById("f-ligne-credit"), LIGNES_CREDIT, false);
-remplirSelect(document.getElementById("filtre-categorie"), CATEGORIES);
-remplirSelect(document.getElementById("filtre-ligne-credit"), LIGNES_CREDIT);
+async function chargerReferentielsMenus(fallbackLocalisations = []) {
+  const [categories, lignesCredit, localisations] = await Promise.all([
+    chargerLibellesCollection(COLLECTIONS_REFERENTIELS.categories, CATEGORIES),
+    chargerLibellesCollection(COLLECTIONS_REFERENTIELS.lignesCredit, LIGNES_CREDIT),
+    chargerLibellesCollection(COLLECTIONS_REFERENTIELS.localisations, fallbackLocalisations)
+  ]);
+
+  remplirSelect(document.getElementById("f-categorie"), categories, false);
+  remplirSelect(document.getElementById("f-ligne-credit"), lignesCredit, false);
+  remplirSelect(document.getElementById("filtre-categorie"), categories);
+  remplirSelect(document.getElementById("filtre-ligne-credit"), lignesCredit);
+  remplirSelect(document.getElementById("filtre-localisation"), localisations);
+  remplirSelect(document.getElementById("f-localisation"), localisations, true);
+}
 
 // ----------------------------------------------------------
 // Chargement des données depuis Firestore
@@ -37,14 +47,9 @@ async function chargerComposants() {
   const snap = await getDocs(collection(db, "composants"));
   TOUS_COMPOSANTS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  // Localisations pilotées par le référentiel "Gestion" (avec fallback sur l'existant).
+  // Les menus déroulants sont pilotés par l'onglet Gestion (avec fallback sur l'existant).
   const fallbackLocalisations = [...new Set(TOUS_COMPOSANTS.map(c => c.localisation).filter(Boolean))].sort();
-  const localisations = await chargerLibellesCollection(
-    COLLECTIONS_REFERENTIELS.localisations,
-    fallbackLocalisations
-  );
-  remplirSelect(document.getElementById("filtre-localisation"), localisations);
-  remplirSelect(document.getElementById("f-localisation"), localisations, true);
+  await chargerReferentielsMenus(fallbackLocalisations);
 
   const selectFormLocalisation = document.getElementById("f-localisation");
   if (selectFormLocalisation && !selectFormLocalisation.querySelector(`option[value="${VALEUR_GESTION_LOCALISATIONS}"]`)) {
