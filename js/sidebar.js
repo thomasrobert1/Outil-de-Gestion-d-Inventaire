@@ -26,7 +26,7 @@ export function injecterSidebar(pageActive) {
     {
       id: "membres",
       href: "membres.html",
-      label: "Liste des membres",
+      label: "Gestion",
       icone: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="3"/><path d="M17 8v6"/><path d="M20 11h-6"/></svg>`
     }
   ];
@@ -41,8 +41,8 @@ export function injecterSidebar(pageActive) {
   const html = `
     <aside class="sidebar">
       <div class="sidebar__brand">
-        <div class="sidebar__brand-mark">Gestion technique</div>
-        <div class="sidebar__brand-title">Inventaire Atelier</div>
+        <div class="sidebar__brand-mark">Gestion</div>
+        <div class="sidebar__brand-title">Inventaire GRD - LAM</div>
       </div>
       <nav class="sidebar__nav">${nav}</nav>
       <div class="sidebar__footer">Synchronisé en temps réel</div>
