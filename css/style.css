@@ -280,6 +280,12 @@ tbody td { padding: 11px 14px; font-size: 13px; vertical-align: middle; }
 .badge-dispo { background: #e4f3ec; color: var(--succes); }
 .badge-emprunte { background: #fbe9e1; color: var(--alerte); }
 .badge-categorie { background: var(--bleu-100); color: var(--bleu-700); }
+.badge-couleur {
+  background: var(--badge-bg, var(--bleu-100));
+  color: var(--badge-fg, var(--bleu-700));
+  border: 1px solid var(--badge-brd, transparent);
+}
+.badge-localisation { font-weight: 700; }
 
 .qte-faible { color: var(--alerte); font-weight: 700; }
 
