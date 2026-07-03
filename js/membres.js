@@ -1,113 +1,342 @@
 // ============================================================
-// MEMBRES.JS — Liste des personnes pouvant emprunter
+// GESTION.JS — Administration des membres et référentiels
 // ============================================================
-import { db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from "./firebase-config.js";
+import {
+  db,
+  collection,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  CATEGORIES,
+  LIGNES_CREDIT,
+  COLLECTIONS_REFERENTIELS,
+  chargerDocumentsCollection
+} from "./firebase-config.js";
 import { injecterSidebar } from "./sidebar.js";
 
 injecterSidebar("membres");
 
-let MEMBRES = [];
-
-async function chargerMembres() {
-  const snap = await getDocs(collection(db, "membres"));
-  MEMBRES = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.nom.localeCompare(b.nom));
-  renderMembres();
-}
-
-function renderMembres() {
-  const zone = document.getElementById("zone-membres");
-
-  if (MEMBRES.length === 0) {
-    zone.innerHTML = `
-      <div class="etat-vide">
-        <div class="etat-vide__titre">Aucun membre enregistré</div>
-        <p>Ajoute des personnes ici pour les proposer dans les réservations.</p>
-      </div>`;
-    return;
+const CONFIGS = [
+  {
+    key: "membres",
+    titre: "Membres",
+    description: "Personnes autorisées à emprunter du matériel.",
+    collection: COLLECTIONS_REFERENTIELS.membres,
+    fields: [
+      { name: "nom", label: "Nom complet", type: "text", required: true, placeholder: "Ex. Jean Dupont" },
+      { name: "role", label: "Rôle / service", type: "text", placeholder: "Ex. Atelier, maintenance…" },
+      { name: "statut", label: "Statut", type: "select", options: ["Actif", "Invité"] }
+    ],
+    columns: ["Nom", "Rôle / service", "Statut"],
+    emptyText: "Aucun membre enregistré"
+  },
+  {
+    key: "categories",
+    titre: "Catégories",
+    description: "Catégories proposées dans les formulaires des composants.",
+    collection: COLLECTIONS_REFERENTIELS.categories,
+    fields: [
+      { name: "libelle", label: "Libellé", type: "text", required: true, placeholder: "Ex. Composants électroniques" }
+    ],
+    columns: ["Libellé"],
+    emptyText: "Aucune catégorie enregistrée"
+  },
+  {
+    key: "localisations",
+    titre: "Localisations",
+    description: "Localisations utilisées dans l'inventaire.",
+    collection: COLLECTIONS_REFERENTIELS.localisations,
+    fields: [
+      { name: "libelle", label: "Libellé", type: "text", required: true, placeholder: "Ex. Étagère A1" }
+    ],
+    columns: ["Libellé"],
+    emptyText: "Aucune localisation enregistrée"
+  },
+  {
+    key: "lignesCredit",
+    titre: "Lignes de crédit",
+    description: "Lignes de crédit proposées lors de la création d'un composant.",
+    collection: COLLECTIONS_REFERENTIELS.lignesCredit,
+    fields: [
+      { name: "libelle", label: "Libellé", type: "text", required: true, placeholder: "Ex. Atelier général" }
+    ],
+    columns: ["Libellé"],
+    emptyText: "Aucune ligne de crédit enregistrée"
   }
+];
 
-  zone.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>Nom</th>
-          <th>Rôle / service</th>
-          <th>Statut</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        ${MEMBRES.map(m => `
-          <tr>
-            <td>${escapeHtml(m.nom)}</td>
-            <td>${escapeHtml(m.role || "—")}</td>
-            <td>${escapeHtml(m.statut || "Actif")}</td>
-            <td>
-              <button class="btn btn-secondaire btn-sm" data-edit-membre="${m.id}">Modifier</button>
-              <button class="btn btn-danger btn-sm" data-delete-membre="${m.id}">Supprimer</button>
-            </td>
-          </tr>
-        `).join("")}
-      </tbody>
-    </table>`;
-
-  zone.querySelectorAll("[data-edit-membre]").forEach(btn => {
-    btn.addEventListener("click", () => ouvrirModaleMembre(MEMBRES.find(m => m.id === btn.dataset.editMembre)));
-  });
-
-  zone.querySelectorAll("[data-delete-membre]").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      if (!confirm("Supprimer ce membre ?")) return;
-      await deleteDoc(doc(db, "membres", btn.dataset.deleteMembre));
-      await chargerMembres();
-    });
-  });
-}
-
-function ouvrirModaleMembre(membre = null) {
-  document.getElementById("form-membre").reset();
-  document.getElementById("membre-id").value = membre?.id || "";
-  document.getElementById("membre-nom").value = membre?.nom || "";
-  document.getElementById("membre-role").value = membre?.role || "";
-  document.getElementById("membre-statut").value = membre?.statut || "Actif";
-  document.getElementById("modale-membre-titre").textContent = membre ? "Modifier un membre" : "Ajouter un membre";
-  document.getElementById("modale-membre").hidden = false;
-}
-
-async function enregistrerMembre() {
-  const nom = document.getElementById("membre-nom").value.trim();
-  const role = document.getElementById("membre-role").value.trim();
-  const statut = document.getElementById("membre-statut").value;
-  const id = document.getElementById("membre-id").value;
-
-  if (!nom) {
-    alert("Le nom du membre est obligatoire.");
-    return;
-  }
-
-  try {
-    if (id) {
-      await updateDoc(doc(db, "membres", id), { nom, role, statut });
-    } else {
-      await addDoc(collection(db, "membres"), { nom, role, statut });
-    }
-    document.getElementById("modale-membre").hidden = true;
-    await chargerMembres();
-  } catch (err) {
-    console.error(err);
-    alert("Erreur lors de l’enregistrement du membre : " + err.message);
-  }
-}
+const ETATS = Object.fromEntries(CONFIGS.map(config => [config.key, { items: [], editionId: "" }]));
 
 function escapeHtml(str) {
   if (str == null) return "";
   return String(str).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[m]));
 }
 
-document.getElementById("btn-ajouter-membre").addEventListener("click", () => ouvrirModaleMembre());
-document.querySelectorAll('[data-fermer-modale="modale-membre"]').forEach(btn => {
-  btn.addEventListener("click", () => { document.getElementById("modale-membre").hidden = true; });
-});
-document.getElementById("btn-enregistrer-membre").addEventListener("click", enregistrerMembre);
+function escapeAttr(str) {
+  return escapeHtml(str);
+}
 
-await chargerMembres();
+function normaliserValeurEntree(config, item) {
+  if (config.key === "membres") {
+    return {
+      nom: item.nom || "",
+      role: item.role || "",
+      statut: item.statut || "Actif"
+    };
+  }
+
+  return { libelle: item.libelle || item.nom || item.label || "" };
+}
+
+function trierItems(config, items) {
+  const cle = config.key === "membres" ? "nom" : "libelle";
+  return [...items].sort((a, b) => (a[cle] || "").localeCompare(b[cle] || ""));
+}
+
+async function initialiserReferentielsParDefaut() {
+  const [categoriesExistantes, localisationsExistantes, lignesExistantes, composantsSnap] = await Promise.all([
+    getDocs(collection(db, COLLECTIONS_REFERENTIELS.categories)),
+    getDocs(collection(db, COLLECTIONS_REFERENTIELS.localisations)),
+    getDocs(collection(db, COLLECTIONS_REFERENTIELS.lignesCredit)),
+    getDocs(collection(db, "composants"))
+  ]);
+
+  if (categoriesExistantes.empty) {
+    await Promise.all(CATEGORIES.map(libelle => addDoc(collection(db, COLLECTIONS_REFERENTIELS.categories), { libelle })));
+  }
+
+  if (lignesExistantes.empty) {
+    await Promise.all(LIGNES_CREDIT.map(libelle => addDoc(collection(db, COLLECTIONS_REFERENTIELS.lignesCredit), { libelle })));
+  }
+
+  if (localisationsExistantes.empty) {
+    const localisations = [...new Set(composantsSnap.docs.map(d => d.data().localisation).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    if (localisations.length > 0) {
+      await Promise.all(localisations.map(libelle => addDoc(collection(db, COLLECTIONS_REFERENTIELS.localisations), { libelle })));
+    }
+  }
+}
+
+async function chargerDonnees() {
+  const zone = document.getElementById("zone-gestion");
+  if (!zone) {
+    console.error("Impossible de charger la gestion: l'élément #zone-gestion est introuvable.");
+    return;
+  }
+
+  try {
+    await initialiserReferentielsParDefaut();
+
+    const resultats = await Promise.all(CONFIGS.map(async config => {
+      const items = await chargerDocumentsCollection(config.collection);
+      return { key: config.key, items: trierItems(config, items) };
+    }));
+
+    resultats.forEach(resultat => {
+      ETATS[resultat.key].items = resultat.items;
+    });
+
+    rendreGestion();
+  } catch (err) {
+    console.error(err);
+    zone.innerHTML = `<div class="tableau-conteneur"><div class="etat-vide"><div class="etat-vide__titre">Erreur de chargement</div><p>Impossible de charger la gestion : ${escapeHtml(err.message || "Erreur inconnue")}</p></div></div>`;
+  }
+}
+
+function rendreGestion() {
+  const zone = document.getElementById("zone-gestion");
+  if (!zone) return;
+  zone.innerHTML = CONFIGS.map(config => rendreSection(config)).join("");
+
+  CONFIGS.forEach(config => {
+    const form = document.querySelector(`[data-form="${config.key}"]`);
+    form?.addEventListener("submit", event => {
+      event.preventDefault();
+      enregistrerElement(config.key);
+    });
+
+    document.querySelectorAll(`[data-edit="${config.key}"]`).forEach(btn => {
+      btn.addEventListener("click", () => commencerEdition(config.key, btn.dataset.id));
+    });
+
+    document.querySelectorAll(`[data-delete="${config.key}"]`).forEach(btn => {
+      btn.addEventListener("click", () => supprimerElement(config.key, btn.dataset.id));
+    });
+
+    document.querySelectorAll(`[data-cancel="${config.key}"]`).forEach(btn => {
+      btn.addEventListener("click", () => annulerEdition(config.key));
+    });
+  });
+}
+
+function rendreSection(config) {
+  const etat = ETATS[config.key];
+  const itemEdition = etat.editionId ? etat.items.find(item => item.id === etat.editionId) : null;
+  const formValues = normaliserValeurEntree(config, itemEdition || {});
+
+  return `
+    <section class="fiche-carte gestion-section">
+      <div class="gestion-section__head">
+        <div>
+          <h2 class="gestion-section__title">${escapeHtml(config.titre)}</h2>
+          <div class="texte-discret">${escapeHtml(config.description)}</div>
+        </div>
+        <span class="badge badge-dispo">${etat.items.length}</span>
+      </div>
+
+      <form data-form="${config.key}" class="gestion-form">
+        <input type="hidden" id="${config.key}-id" value="${escapeAttr(etat.editionId)}">
+        <div class="grille-attributs">
+          ${config.fields.map(field => rendreChamp(config.key, field, formValues)).join("")}
+        </div>
+        <div class="gestion-form__actions">
+          <button class="btn btn-primaire" type="submit">${etat.editionId ? "Mettre à jour" : "Ajouter"}</button>
+          ${etat.editionId ? `<button class="btn btn-secondaire" type="button" data-cancel="${config.key}">Annuler</button>` : ""}
+        </div>
+      </form>
+
+      <div class="tableau-conteneur gestion-table-wrap">
+        ${etat.items.length === 0 ? `<div class="etat-vide"><div class="etat-vide__titre">${escapeHtml(config.emptyText)}</div></div>` : rendreTable(config, etat.items)}
+      </div>
+    </section>
+  `;
+}
+
+function rendreChamp(prefixe, field, valeurs) {
+  const id = `${prefixe}-${field.name}`;
+  const valeur = valeurs[field.name] || "";
+  if (field.type === "select") {
+    return `
+      <div class="champ">
+        <label for="${id}">${escapeHtml(field.label)}</label>
+        <select id="${id}" ${field.required ? "required" : ""}>
+          ${field.options.map(option => `<option value="${escapeAttr(option)}"${option === valeur ? " selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+        </select>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="champ">
+      <label for="${id}">${escapeHtml(field.label)}</label>
+      <input type="text" id="${id}" value="${escapeAttr(valeur)}" ${field.required ? "required" : ""} placeholder="${escapeAttr(field.placeholder || "")}">
+    </div>
+  `;
+}
+
+function rendreTable(config, items) {
+  const rows = items.map(item => {
+    if (config.key === "membres") {
+      return `
+        <tr>
+          <td>${escapeHtml(item.nom || "—")}</td>
+          <td>${escapeHtml(item.role || "—")}</td>
+          <td>${escapeHtml(item.statut || "Actif")}</td>
+          <td>
+            <button class="btn btn-secondaire btn-sm" type="button" data-edit="${config.key}" data-id="${escapeAttr(item.id)}">Modifier</button>
+            <button class="btn btn-danger btn-sm" type="button" data-delete="${config.key}" data-id="${escapeAttr(item.id)}">Supprimer</button>
+          </td>
+        </tr>
+      `;
+    }
+
+    return `
+      <tr>
+        <td>${escapeHtml(item.libelle || item.nom || item.label || "—")}</td>
+        <td>
+          <button class="btn btn-secondaire btn-sm" type="button" data-edit="${config.key}" data-id="${escapeAttr(item.id)}">Modifier</button>
+          <button class="btn btn-danger btn-sm" type="button" data-delete="${config.key}" data-id="${escapeAttr(item.id)}">Supprimer</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  const header = config.key === "membres"
+    ? `<tr><th>Nom</th><th>Rôle / service</th><th>Statut</th><th></th></tr>`
+    : `<tr><th>Libellé</th><th></th></tr>`;
+
+  return `
+    <table>
+      <thead>${header}</thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function commencerEdition(cle, id) {
+  ETATS[cle].editionId = id;
+  rendreGestion();
+  const config = CONFIGS.find(c => c.key === cle);
+  const item = ETATS[cle].items.find(x => x.id === id);
+  if (!config || !item) return;
+
+  config.fields.forEach(field => {
+    const input = document.getElementById(`${cle}-${field.name}`);
+    if (input) {
+      input.value = item[field.name] || item.libelle || item.nom || "";
+    }
+  });
+}
+
+function annulerEdition(cle) {
+  ETATS[cle].editionId = "";
+  rendreGestion();
+}
+
+async function enregistrerElement(cle) {
+  const config = CONFIGS.find(c => c.key === cle);
+  if (!config) return;
+
+  const editionId = document.getElementById(`${cle}-id`).value;
+  let donnees;
+
+  if (cle === "membres") {
+    const nom = document.getElementById(`${cle}-nom`).value.trim();
+    const role = document.getElementById(`${cle}-role`).value.trim();
+    const statut = document.getElementById(`${cle}-statut`).value;
+    if (!nom) {
+      alert("Le nom du membre est obligatoire.");
+      return;
+    }
+    donnees = { nom, role, statut };
+  } else {
+    const libelle = document.getElementById(`${cle}-libelle`).value.trim();
+    if (!libelle) {
+      alert("Le libellé est obligatoire.");
+      return;
+    }
+    donnees = { libelle };
+  }
+
+  try {
+    if (editionId) {
+      await updateDoc(doc(db, config.collection, editionId), donnees);
+    } else {
+      await addDoc(collection(db, config.collection), donnees);
+    }
+    ETATS[cle].editionId = "";
+    await chargerDonnees();
+  } catch (err) {
+    console.error(err);
+    alert("Erreur lors de l’enregistrement : " + err.message);
+  }
+}
+
+async function supprimerElement(cle, id) {
+  const config = CONFIGS.find(c => c.key === cle);
+  if (!config || !id) return;
+  if (!confirm(`Supprimer cet élément de ${config.titre.toLowerCase()} ?`)) return;
+
+  try {
+    await deleteDoc(doc(db, config.collection, id));
+    if (ETATS[cle].editionId === id) ETATS[cle].editionId = "";
+    await chargerDonnees();
+  } catch (err) {
+    console.error(err);
+    alert("Erreur lors de la suppression : " + err.message);
+  }
+}
+
+await chargerDonnees();
