@@ -1,0 +1,65 @@
+name: Save Component Image from Issue
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  save-image:
+    if: startsWith(github.event.issue.title, '[IMG_UPLOAD]')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Save image from issue payload
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: node scripts/save-component-image.js
+
+      - name: Commit image
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add images/composants
+          git commit -m "chore(images): add component image from issue #${{ github.event.issue.number }}" || echo "No changes to commit"
+          git push
+
+      - name: Comment image URL on issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const data = JSON.parse(fs.readFileSync('tmp-image-result.json', 'utf8'));
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = context.payload.repository.default_branch;
+            const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${data.filePath}`;
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: context.issue.number,
+              body: `IMAGE_SAVED\nimageUrl=${rawUrl}\nfilePath=${data.filePath}\nreference=${data.reference}`
+            });
+
+      - name: Close technical issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: "closed"
+            });
