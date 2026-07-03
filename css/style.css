@@ -291,6 +291,61 @@ tbody td { padding: 11px 14px; font-size: 13px; vertical-align: middle; }
 .etat-vide__titre { font-size: 15px; font-weight: 600; color: var(--gris-700); margin-bottom: 6px; }
 
 /* ============================================================
+   GESTION (membres + référentiels)
+   ============================================================ */
+.gestion-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.gestion-section {
+  margin-bottom: 0;
+}
+
+.gestion-section__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.gestion-section__title {
+  margin: 0 0 6px;
+}
+
+.gestion-form {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px dashed var(--gris-200);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff, #fbfcfd);
+}
+
+.gestion-form__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.gestion-table-wrap {
+  margin-top: 16px;
+}
+
+.gestion-table-wrap tbody td:last-child {
+  white-space: nowrap;
+}
+
+.gestion-table-wrap tbody td:last-child .btn {
+  margin-right: 6px;
+}
+
+.gestion-table-wrap tbody td:last-child .btn:last-child {
+  margin-right: 0;
+}
+
+/* ============================================================
    FICHE PRODUIT
    ============================================================ */
 .fiche-produit {
