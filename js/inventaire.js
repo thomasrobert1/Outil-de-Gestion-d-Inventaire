@@ -3,7 +3,9 @@
 // ============================================================
 import {
   db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc,
-  CATEGORIES, LIGNES_CREDIT
+  CATEGORIES, LIGNES_CREDIT,
+  COLLECTIONS_REFERENTIELS,
+  chargerLibellesCollection
 } from "./firebase-config.js";
 import { injecterSidebar } from "./sidebar.js";
 
@@ -12,6 +14,7 @@ injecterSidebar("inventaire");
 let TOUS_COMPOSANTS = [];
 let RESERVATIONS_ACTIVES = new Map(); // ids des composants et quantités empruntées actuellement
 let RESULTATS_AFFICHES = [];
+const VALEUR_GESTION_LOCALISATIONS = "__gestion_localisations__";
 
 // ----------------------------------------------------------
 // Remplissage des menus déroulants de filtres + formulaire
@@ -34,10 +37,22 @@ async function chargerComposants() {
   const snap = await getDocs(collection(db, "composants"));
   TOUS_COMPOSANTS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  // Localisations dynamiques
-  const localisations = [...new Set(TOUS_COMPOSANTS.map(c => c.localisation).filter(Boolean))].sort();
+  // Localisations pilotées par le référentiel "Gestion" (avec fallback sur l'existant).
+  const fallbackLocalisations = [...new Set(TOUS_COMPOSANTS.map(c => c.localisation).filter(Boolean))].sort();
+  const localisations = await chargerLibellesCollection(
+    COLLECTIONS_REFERENTIELS.localisations,
+    fallbackLocalisations
+  );
   remplirSelect(document.getElementById("filtre-localisation"), localisations);
   remplirSelect(document.getElementById("f-localisation"), localisations, true);
+
+  const selectFormLocalisation = document.getElementById("f-localisation");
+  if (selectFormLocalisation && !selectFormLocalisation.querySelector(`option[value="${VALEUR_GESTION_LOCALISATIONS}"]`)) {
+    selectFormLocalisation.insertAdjacentHTML(
+      "beforeend",
+      `<option value="${VALEUR_GESTION_LOCALISATIONS}">Gérer les localisations…</option>`
+    );
+  }
 
   await chargerReservationsActives();
   appliquerFiltresEtAfficher();
@@ -307,6 +322,12 @@ async function attendreImageDepuisIssue(issueNumber, timeoutMs = 120000, interva
 ].forEach(id => {
   document.getElementById(id).addEventListener("input", appliquerFiltresEtAfficher);
   document.getElementById(id).addEventListener("change", appliquerFiltresEtAfficher);
+});
+
+document.getElementById("f-localisation").addEventListener("change", event => {
+  if (event.target.value === VALEUR_GESTION_LOCALISATIONS) {
+    window.location.href = "membres.html#gestion-localisations";
+  }
 });
 
 // ----------------------------------------------------------
