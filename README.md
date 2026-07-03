@@ -117,3 +117,20 @@ laisse n'importe qui avec le lien lire/écrire toute la base. Pour la suite :
   prêt à l'emploi).
 - **Photos** : uploadées directement vers Firebase Storage depuis le
   formulaire, l'URL générée est stockée dans la fiche Firestore du composant.
+
+## Option — Stocker les photos sur GitHub
+
+Le projet supporte maintenant un upload photo vers un dépôt GitHub (dossier dédié),
+utilisé en priorité si la configuration est renseignée.
+
+1. Ouvre `js/firebase-config.js`.
+2. Renseigne l'objet `GITHUB_MEDIA_CONFIG` :
+   - `owner` : ton utilisateur ou organisation GitHub
+   - `repo` : nom du dépôt cible
+   - `branch` : branche cible (ex: `main`)
+   - `folder` : dossier de stockage (ex: `media/composants`)
+   - `token` : Personal Access Token GitHub avec droit `contents:write`
+3. Le token est sensible: évite d'exposer ce fichier publiquement tel quel.
+
+Quand `GITHUB_MEDIA_CONFIG` est complet, les photos des composants sont écrites
+dans ce dépôt GitHub, puis l'URL est enregistrée dans Firestore.
