@@ -235,3 +235,4 @@ document.getElementById("btn-confirmer-reservation").addEventListener("click", e
 await chargerComposants();
 await chargerMembres();
 await chargerHistorique();
+}
