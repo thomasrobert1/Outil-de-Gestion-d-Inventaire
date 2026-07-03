@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Liste des membres — Gestion Atelier</title>
+<title>Gestion — Gestion Atelier</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -15,49 +15,15 @@
     <div class="page-header">
       <div>
         <div class="page-header__eyebrow">Référentiel</div>
-        <h1>Liste des membres</h1>
-        <div class="page-header__sub">Gérez les personnes susceptibles d’emprunter un outil ou un composant.</div>
+        <h1>Gestion</h1>
+        <div class="page-header__sub">Administration des membres, catégories, localisations et lignes de crédit.</div>
       </div>
-      <button class="btn btn-primaire" id="btn-ajouter-membre">+ Ajouter un membre</button>
     </div>
 
-    <div id="zone-membres" class="tableau-conteneur">
-      <div class="loader">Chargement de la liste…</div>
+    <div id="zone-gestion" class="gestion-grid">
+      <div class="loader">Chargement de la gestion…</div>
     </div>
   </main>
-</div>
-
-<div class="overlay" id="modale-membre" hidden>
-  <div class="modale">
-    <div class="modale__header">
-      <h3 id="modale-membre-titre">Ajouter un membre</h3>
-      <button class="modale__fermer" data-fermer-modale="modale-membre">&times;</button>
-    </div>
-    <div class="modale__corps">
-      <form id="form-membre">
-        <input type="hidden" id="membre-id">
-        <div class="champ">
-          <label>Nom complet *</label>
-          <input type="text" id="membre-nom" required placeholder="Ex. Jean Dupont">
-        </div>
-        <div class="champ">
-          <label>Rôle / service</label>
-          <input type="text" id="membre-role" placeholder="Ex. Atelier, Maintenance…">
-        </div>
-        <div class="champ">
-          <label>Statut</label>
-          <select id="membre-statut">
-            <option value="Actif">Actif</option>
-            <option value="Invité">Invité</option>
-          </select>
-        </div>
-      </form>
-    </div>
-    <div class="modale__pied">
-      <button class="btn btn-secondaire" data-fermer-modale="modale-membre">Annuler</button>
-      <button class="btn btn-primaire" id="btn-enregistrer-membre">Enregistrer</button>
-    </div>
-  </div>
 </div>
 
 <script type="module" src="js/membres.js"></script>
