@@ -150,6 +150,14 @@ function rendreGestion() {
   if (!zone) return;
   zone.innerHTML = CONFIGS.map(config => rendreSection(config)).join("");
 
+  const cibleDepuisHash = window.location.hash.replace("#", "");
+  if (cibleDepuisHash) {
+    const element = document.getElementById(cibleDepuisHash);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
   CONFIGS.forEach(config => {
     const form = document.querySelector(`[data-form="${config.key}"]`);
     form?.addEventListener("submit", event => {
@@ -177,7 +185,7 @@ function rendreSection(config) {
   const formValues = normaliserValeurEntree(config, itemEdition || {});
 
   return `
-    <section class="fiche-carte gestion-section">
+    <section class="fiche-carte gestion-section" id="gestion-${config.key}">
       <div class="gestion-section__head">
         <div>
           <h2 class="gestion-section__title">${escapeHtml(config.titre)}</h2>
