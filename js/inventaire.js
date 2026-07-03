@@ -2,9 +2,10 @@
 // INVENTAIRE.JS — Logique de la page d'inventaire
 // ============================================================
 import {
-  db, storage, collection, getDocs, addDoc, updateDoc, deleteDoc, doc,
-  ref, uploadBytes, getDownloadURL, query, orderBy,
-  PERSONNES, CATEGORIES, LIGNES_CREDIT
+  db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc,
+  query, orderBy,
+  PERSONNES, CATEGORIES, LIGNES_CREDIT, normaliserCategorie,
+  COLLECTIONS_REFERENTIELS, chargerLibellesCollection, televerserImage
 } from "./firebase-config.js";
 import { injecterSidebar } from "./sidebar.js";
 
@@ -13,6 +14,8 @@ injecterSidebar("inventaire");
 let TOUS_COMPOSANTS = [];
 let RESERVATIONS_ACTIVES = new Map(); // ids des composants et quantités empruntées actuellement
 let RESULTATS_AFFICHES = [];
+const CACHE_RESERVATIONS_CLE = "inventaire:reservationsActives:v1";
+const CACHE_RESERVATIONS_TTL_MS = 60 * 1000;
 
 // ----------------------------------------------------------
 // Remplissage des menus déroulants de filtres + formulaire
@@ -23,28 +26,81 @@ function remplirSelect(select, valeurs, placeholderConserve = true) {
   select.innerHTML = optionsActuelles.concat(options).join("");
 }
 
-remplirSelect(document.getElementById("f-categorie"), CATEGORIES, false);
-remplirSelect(document.getElementById("f-ligne-credit"), LIGNES_CREDIT, false);
-remplirSelect(document.getElementById("filtre-categorie"), CATEGORIES);
-remplirSelect(document.getElementById("filtre-ligne-credit"), LIGNES_CREDIT);
+async function initialiserListesReferentiel() {
+  const [categories, lignesCredit] = await Promise.all([
+    chargerLibellesCollection(COLLECTIONS_REFERENTIELS.categories, CATEGORIES),
+    chargerLibellesCollection(COLLECTIONS_REFERENTIELS.lignesCredit, LIGNES_CREDIT)
+  ]);
+
+  remplirSelect(document.getElementById("f-categorie"), categories, false);
+  remplirSelect(document.getElementById("f-ligne-credit"), lignesCredit, false);
+  remplirSelect(document.getElementById("filtre-categorie"), categories);
+  remplirSelect(document.getElementById("filtre-ligne-credit"), lignesCredit);
+}
 
 // ----------------------------------------------------------
 // Chargement des données depuis Firestore
 // ----------------------------------------------------------
 async function chargerComposants() {
-  const snap = await getDocs(collection(db, "composants"));
-  TOUS_COMPOSANTS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const [snap, localisationsReferentiel] = await Promise.all([
+    getDocs(collection(db, "composants")),
+    chargerLibellesCollection(COLLECTIONS_REFERENTIELS.localisations, [])
+  ]);
+
+  TOUS_COMPOSANTS = snap.docs.map(d => ({ id: d.id, ...d.data(), categorie: normaliserCategorie(d.data().categorie) }));
 
   // Localisations dynamiques (dépendent des données réelles saisies)
-  const localisations = [...new Set(TOUS_COMPOSANTS.map(c => c.localisation).filter(Boolean))].sort();
+  const localisations = [...new Set([...localisationsReferentiel, ...TOUS_COMPOSANTS.map(c => c.localisation).filter(Boolean)])].sort((a, b) => a.localeCompare(b));
   remplirSelect(document.getElementById("filtre-localisation"), localisations);
   remplirSelect(document.getElementById("f-localisation"), localisations, true);
 
-  await chargerReservationsActives();
+  // Affiche rapidement l'inventaire puis enrichit les statuts d'emprunt.
   appliquerFiltresEtAfficher();
+
+  const sourceReservations = await chargerReservationsActives();
+  appliquerFiltresEtAfficher();
+
+  if (sourceReservations === "cache") {
+    chargerReservationsActives({ forceReseau: true })
+      .then(() => appliquerFiltresEtAfficher())
+      .catch(() => {});
+  }
 }
 
-async function chargerReservationsActives() {
+function lireCacheReservationsActives() {
+  try {
+    const brut = sessionStorage.getItem(CACHE_RESERVATIONS_CLE);
+    if (!brut) return null;
+    const contenu = JSON.parse(brut);
+    if (!contenu || !contenu.ts || !Array.isArray(contenu.entrees)) return null;
+    if (Date.now() - contenu.ts > CACHE_RESERVATIONS_TTL_MS) return null;
+    return new Map(contenu.entrees);
+  } catch {
+    return null;
+  }
+}
+
+function ecrireCacheReservationsActives(compte) {
+  try {
+    const contenu = {
+      ts: Date.now(),
+      entrees: Array.from(compte.entries())
+    };
+    sessionStorage.setItem(CACHE_RESERVATIONS_CLE, JSON.stringify(contenu));
+  } catch {
+    // Ignore les erreurs de cache (quota, mode privé, etc.)
+  }
+}
+
+async function chargerReservationsActives({ forceReseau = false } = {}) {
+  if (!forceReseau) {
+    const depuisCache = lireCacheReservationsActives();
+    if (depuisCache) {
+      RESERVATIONS_ACTIVES = depuisCache;
+      return "cache";
+    }
+  }
+
   const snap = await getDocs(collection(db, "reservations"));
   const aujourdhui = new Date().toISOString().split("T")[0];
   const compte = new Map();
@@ -56,6 +112,8 @@ async function chargerReservationsActives() {
       compte.set(r.composantId, (compte.get(r.composantId) || 0) + q);
     });
   RESERVATIONS_ACTIVES = compte;
+  ecrireCacheReservationsActives(compte);
+  return "reseau";
 }
 
 // ----------------------------------------------------------
@@ -257,9 +315,15 @@ document.getElementById("btn-enregistrer-composant").addEventListener("click", a
   const categorie = document.getElementById("f-categorie").value;
   const localisation = document.getElementById("f-localisation").value.trim();
   const quantite = parseInt(document.getElementById("f-quantite").value, 10);
+  const idExistant = document.getElementById("f-id").value;
+  const quantiteEmpruntee = idExistant ? (RESERVATIONS_ACTIVES.get(idExistant) || 0) : 0;
 
   if (!reference || !description || !categorie || !localisation || isNaN(quantite)) {
     alert("Merci de remplir au minimum : référence, description, catégorie, localisation et quantité.");
+    return;
+  }
+  if (idExistant && quantite < quantiteEmpruntee) {
+    alert(`Impossible de réduire le stock à ${quantite} car ${quantiteEmpruntee} unité(s) sont déjà empruntées.`);
     return;
   }
 
@@ -271,16 +335,13 @@ document.getElementById("btn-enregistrer-composant").addEventListener("click", a
     let photoUrl = null;
     const fichierPhoto = document.getElementById("f-photo").files[0];
     if (fichierPhoto) {
-      const cheminStockage = `images/${Date.now()}_${fichierPhoto.name}`;
-      const storageRef = ref(storage, cheminStockage);
-      await uploadBytes(storageRef, fichierPhoto);
-      photoUrl = await getDownloadURL(storageRef);
+      photoUrl = await televerserImage(fichierPhoto, "images");
     }
 
     const donnees = {
       reference,
       description,
-      categorie,
+      categorie: normaliserCategorie(categorie),
       localisation: document.getElementById("f-localisation").value.trim(),
       quantite,
       prix: parseFloat(document.getElementById("f-prix").value) || null,
@@ -291,10 +352,9 @@ document.getElementById("btn-enregistrer-composant").addEventListener("click", a
     };
     if (photoUrl) donnees.photoUrl = photoUrl;
 
-    const idExistant = document.getElementById("f-id").value;
     if (idExistant) {
       if (quantite === 0) {
-        // Si la quantité est 0, supprimer le composant
+        // Si la quantité totale est 0 et qu'aucune unité n'est empruntée, supprimer le composant
         await deleteDoc(doc(db, "composants", idExistant));
       } else {
         await updateDoc(doc(db, "composants", idExistant), donnees);
@@ -314,4 +374,5 @@ document.getElementById("btn-enregistrer-composant").addEventListener("click", a
   }
 });
 
-chargerComposants();
+await initialiserListesReferentiel();
+await chargerComposants();
