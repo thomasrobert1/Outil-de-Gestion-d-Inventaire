@@ -160,8 +160,8 @@ function rendreTableau(liste) {
         <td>${photoCell}</td>
         <td class="cell-ref">${escapeHtml(c.reference || "")}</td>
         <td>${escapeHtml(c.description || "")}</td>
-        <td><span class="badge badge-categorie">${escapeHtml(c.categorie || "—")}</span></td>
-        <td>${escapeHtml(c.localisation || "—")}</td>
+        <td>${rendreBadgeCouleur(c.categorie, "categorie")}</td>
+        <td>${rendreBadgeCouleur(c.localisation, "localisation")}</td>
         <td>${(c.quantite || 0) <= 1 ? `<span class="qte-faible">${c.quantite || 0}</span>` : (c.quantite || 0)}</td>
         <td>${quantiteRestante <= 0 ? `<span class="qte-faible">${quantiteRestante}</span>` : quantiteRestante}</td>
         <td>${c.prix != null ? Number(c.prix).toFixed(2) + " €" : "—"}</td>
@@ -199,6 +199,26 @@ function escapeHtml(str) {
   }[m]));
 }
 function escapeAttr(str) { return escapeHtml(str); }
+
+function hashTexte(texte) {
+  return Array.from(String(texte || ""))
+    .reduce((acc, char) => ((acc * 33) + char.charCodeAt(0)) >>> 0, 5381);
+}
+
+function styleBadgeDepuisTexte(texte, type = "categorie") {
+  const hash = hashTexte(texte);
+  const decalage = type === "localisation" ? 33 : 0;
+  const teinte = (hash + decalage) % 360;
+  const fond = `hsl(${teinte}, 78%, 93%)`;
+  const texteCouleur = `hsl(${teinte}, 56%, 32%)`;
+  const bordure = `hsl(${teinte}, 48%, 80%)`;
+  return `--badge-bg:${fond};--badge-fg:${texteCouleur};--badge-brd:${bordure};`;
+}
+
+function rendreBadgeCouleur(libelle, type) {
+  const valeur = libelle || "Non renseigné";
+  return `<span class="badge badge-couleur badge-${type}" style="${styleBadgeDepuisTexte(valeur, type)}">${escapeHtml(valeur)}</span>`;
+}
 
 function escapeCsv(valeur) {
   if (valeur == null) return "";
