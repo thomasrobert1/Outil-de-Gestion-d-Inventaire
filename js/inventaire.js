@@ -3,9 +3,7 @@
 // ============================================================
 import {
   db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc,
-  query, orderBy,
-  PERSONNES, CATEGORIES, LIGNES_CREDIT, normaliserCategorie,
-  COLLECTIONS_REFERENTIELS, chargerLibellesCollection, televerserImage
+  CATEGORIES, LIGNES_CREDIT
 } from "./firebase-config.js";
 import { injecterSidebar } from "./sidebar.js";
 
@@ -14,96 +12,42 @@ injecterSidebar("inventaire");
 let TOUS_COMPOSANTS = [];
 let RESERVATIONS_ACTIVES = new Map(); // ids des composants et quantités empruntées actuellement
 let RESULTATS_AFFICHES = [];
-const CACHE_RESERVATIONS_CLE = "inventaire:reservationsActives:v1";
-const CACHE_RESERVATIONS_TTL_MS = 60 * 1000;
 
 // ----------------------------------------------------------
 // Remplissage des menus déroulants de filtres + formulaire
 // ----------------------------------------------------------
 function remplirSelect(select, valeurs, placeholderConserve = true) {
-  const optionsActuelles = placeholderConserve ? [select.firstElementChild.outerHTML] : [];
+  const optionsActuelles = placeholderConserve && select.firstElementChild ? [select.firstElementChild.outerHTML] : [];
   const options = valeurs.map(v => `<option value="${v}">${v}</option>`);
   select.innerHTML = optionsActuelles.concat(options).join("");
 }
 
-async function initialiserListesReferentiel() {
-  const [categories, lignesCredit] = await Promise.all([
-    chargerLibellesCollection(COLLECTIONS_REFERENTIELS.categories, CATEGORIES),
-    chargerLibellesCollection(COLLECTIONS_REFERENTIELS.lignesCredit, LIGNES_CREDIT)
-  ]);
-
-  remplirSelect(document.getElementById("f-categorie"), categories, false);
-  remplirSelect(document.getElementById("f-ligne-credit"), lignesCredit, false);
-  remplirSelect(document.getElementById("filtre-categorie"), categories);
-  remplirSelect(document.getElementById("filtre-ligne-credit"), lignesCredit);
-}
+remplirSelect(document.getElementById("f-categorie"), CATEGORIES, false);
+remplirSelect(document.getElementById("f-ligne-credit"), LIGNES_CREDIT, false);
+remplirSelect(document.getElementById("filtre-categorie"), CATEGORIES);
+remplirSelect(document.getElementById("filtre-ligne-credit"), LIGNES_CREDIT);
 
 // ----------------------------------------------------------
 // Chargement des données depuis Firestore
 // ----------------------------------------------------------
 async function chargerComposants() {
-  const [snap, localisationsReferentiel] = await Promise.all([
-    getDocs(collection(db, "composants")),
-    chargerLibellesCollection(COLLECTIONS_REFERENTIELS.localisations, [])
-  ]);
+  const snap = await getDocs(collection(db, "composants"));
+  TOUS_COMPOSANTS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  TOUS_COMPOSANTS = snap.docs.map(d => ({ id: d.id, ...d.data(), categorie: normaliserCategorie(d.data().categorie) }));
-
-  // Localisations dynamiques (dépendent des données réelles saisies)
-  const localisations = [...new Set([...localisationsReferentiel, ...TOUS_COMPOSANTS.map(c => c.localisation).filter(Boolean)])].sort((a, b) => a.localeCompare(b));
+  // Localisations dynamiques
+  const localisations = [...new Set(TOUS_COMPOSANTS.map(c => c.localisation).filter(Boolean))].sort();
   remplirSelect(document.getElementById("filtre-localisation"), localisations);
   remplirSelect(document.getElementById("f-localisation"), localisations, true);
 
-  // Affiche rapidement l'inventaire puis enrichit les statuts d'emprunt.
+  await chargerReservationsActives();
   appliquerFiltresEtAfficher();
-
-  const sourceReservations = await chargerReservationsActives();
-  appliquerFiltresEtAfficher();
-
-  if (sourceReservations === "cache") {
-    chargerReservationsActives({ forceReseau: true })
-      .then(() => appliquerFiltresEtAfficher())
-      .catch(() => {});
-  }
 }
 
-function lireCacheReservationsActives() {
-  try {
-    const brut = sessionStorage.getItem(CACHE_RESERVATIONS_CLE);
-    if (!brut) return null;
-    const contenu = JSON.parse(brut);
-    if (!contenu || !contenu.ts || !Array.isArray(contenu.entrees)) return null;
-    if (Date.now() - contenu.ts > CACHE_RESERVATIONS_TTL_MS) return null;
-    return new Map(contenu.entrees);
-  } catch {
-    return null;
-  }
-}
-
-function ecrireCacheReservationsActives(compte) {
-  try {
-    const contenu = {
-      ts: Date.now(),
-      entrees: Array.from(compte.entries())
-    };
-    sessionStorage.setItem(CACHE_RESERVATIONS_CLE, JSON.stringify(contenu));
-  } catch {
-    // Ignore les erreurs de cache (quota, mode privé, etc.)
-  }
-}
-
-async function chargerReservationsActives({ forceReseau = false } = {}) {
-  if (!forceReseau) {
-    const depuisCache = lireCacheReservationsActives();
-    if (depuisCache) {
-      RESERVATIONS_ACTIVES = depuisCache;
-      return "cache";
-    }
-  }
-
+async function chargerReservationsActives() {
   const snap = await getDocs(collection(db, "reservations"));
   const aujourdhui = new Date().toISOString().split("T")[0];
   const compte = new Map();
+
   snap.docs
     .map(d => d.data())
     .filter(r => r.dateDebut <= aujourdhui && (!r.dateFin || r.dateFin >= aujourdhui))
@@ -111,9 +55,8 @@ async function chargerReservationsActives({ forceReseau = false } = {}) {
       const q = parseInt(r.quantite, 10) || 1;
       compte.set(r.composantId, (compte.get(r.composantId) || 0) + q);
     });
+
   RESERVATIONS_ACTIVES = compte;
-  ecrireCacheReservationsActives(compte);
-  return "reseau";
 }
 
 // ----------------------------------------------------------
@@ -134,7 +77,7 @@ function appliquerFiltresEtAfficher() {
     if (disponibilite === "dispo" && (RESERVATIONS_ACTIVES.get(c.id) || 0) >= (c.quantite || 0)) return false;
     if (disponibilite === "emprunte" && (RESERVATIONS_ACTIVES.get(c.id) || 0) === 0) return false;
     if (recherche) {
-      const cible = `${c.reference} ${c.description} ${c.numeroSerie || ""}`.toLowerCase();
+      const cible = `${c.reference || ""} ${c.description || ""} ${c.numeroSerie || ""}`.toLowerCase();
       if (!cible.includes(recherche)) return false;
     }
     return true;
@@ -165,9 +108,10 @@ function appliquerFiltresEtAfficher() {
       if (!groupes[cle]) groupes[cle] = [];
       groupes[cle].push(c);
     });
+
     zone.innerHTML = Object.keys(groupes).sort().map(cle => `
       <h2 style="font-size:14px;font-weight:700;color:var(--gris-700);margin:24px 0 10px;">
-        ${cle} <span class="texte-discret">(${groupes[cle].length})</span>
+        ${escapeHtml(cle)} <span class="texte-discret">(${groupes[cle].length})</span>
       </h2>
       ${rendreTableau(groupes[cle])}
     `).join("");
@@ -175,7 +119,6 @@ function appliquerFiltresEtAfficher() {
     zone.innerHTML = rendreTableau(resultats);
   }
 
-  // Attache les clics de navigation après rendu
   zone.querySelectorAll("tbody tr").forEach(tr => {
     tr.addEventListener("click", () => {
       window.location.href = `produit.html?id=${tr.dataset.id}`;
@@ -189,18 +132,19 @@ function rendreTableau(liste) {
     const quantiteEmpruntee = RESERVATIONS_ACTIVES.get(c.id) || 0;
     const quantiteRestante = Math.max(0, (c.quantite || 0) - quantiteEmpruntee);
     const photoCell = c.photoUrl
-      ? `<img src="${c.photoUrl}" class="cell-photo-mini" alt="">`
+      ? `<img src="${escapeAttr(c.photoUrl)}" class="cell-photo-mini" alt="">`
       : `<div class="cell-photo-vide">—</div>`;
+
     return `
-      <tr data-id="${c.id}">
+      <tr data-id="${escapeAttr(c.id)}">
         <td>${photoCell}</td>
-        <td class="cell-ref">${escapeHtml(c.reference)}</td>
-        <td>${escapeHtml(c.description)}</td>
+        <td class="cell-ref">${escapeHtml(c.reference || "")}</td>
+        <td>${escapeHtml(c.description || "")}</td>
         <td><span class="badge badge-categorie">${escapeHtml(c.categorie || "—")}</span></td>
         <td>${escapeHtml(c.localisation || "—")}</td>
-        <td>${c.quantite <= 1 ? `<span class="qte-faible">${c.quantite}</span>` : c.quantite}</td>
+        <td>${(c.quantite || 0) <= 1 ? `<span class="qte-faible">${c.quantite || 0}</span>` : (c.quantite || 0)}</td>
         <td>${quantiteRestante <= 0 ? `<span class="qte-faible">${quantiteRestante}</span>` : quantiteRestante}</td>
-        <td>${c.prix != null ? c.prix.toFixed(2) + " €" : "—"}</td>
+        <td>${c.prix != null ? Number(c.prix).toFixed(2) + " €" : "—"}</td>
         <td>${emprunte ? '<span class="badge badge-emprunte">Emprunté</span>' : '<span class="badge badge-dispo">Disponible</span>'}</td>
       </tr>
     `;
@@ -230,8 +174,11 @@ function rendreTableau(liste) {
 
 function escapeHtml(str) {
   if (str == null) return "";
-  return String(str).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[m]));
+  return String(str).replace(/[&<>"']/g, m => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
+  }[m]));
 }
+function escapeAttr(str) { return escapeHtml(str); }
 
 function escapeCsv(valeur) {
   if (valeur == null) return "";
@@ -246,7 +193,7 @@ function exporterCsv() {
   }
 
   const separateur = ";";
-  const entetes = ["id", "reference", "description", "categorie", "localisation", "quantite", "quantiteRestante", "prix", "statut", "numeroSerie", "ligneCredit", "url", "commentaire"];
+  const entetes = ["id", "reference", "description", "categorie", "localisation", "quantite", "quantiteRestante", "prix", "statut", "numeroSerie", "ligneCredit", "url", "commentaire", "photoUrl"];
   const lignes = [entetes.map(v => escapeCsv(v)).join(separateur)];
 
   RESULTATS_AFFICHES.forEach(c => {
@@ -266,7 +213,8 @@ function exporterCsv() {
       c.numeroSerie || "",
       c.ligneCredit || "",
       c.url || "",
-      c.commentaire || ""
+      c.commentaire || "",
+      c.photoUrl || ""
     ];
     lignes.push(valeurs.map(v => escapeCsv(v)).join(separateur));
   });
@@ -281,6 +229,76 @@ function exporterCsv() {
   lien.click();
   document.body.removeChild(lien);
   URL.revokeObjectURL(url);
+}
+
+// ---- Upload image via Issue + Action ----
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Lecture du fichier image impossible."));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function creerIssueUploadImage(reference, dataUrl) {
+  const token = window.localStorage.getItem("GITHUB_TOKEN") || "";
+  if (!token) {
+    throw new Error("Token GitHub manquant. Exécute: localStorage.setItem('GITHUB_TOKEN','TON_TOKEN')");
+  }
+
+  const payload = { reference, dataUrl };
+  const res = await fetch("https://api.github.com/repos/thomasrobert1/Outil-de-Gestion-d-Inventaire/issues", {
+    method: "POST",
+    headers: {
+      "Accept": "application/vnd.github+json",
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      title: `[IMG_UPLOAD] ${reference}`,
+      body: JSON.stringify(payload)
+    })
+  });
+
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Création issue upload impossible: ${res.status} ${txt}`);
+  }
+
+  return res.json();
+}
+
+async function attendreImageDepuisIssue(issueNumber, timeoutMs = 120000, intervalMs = 3000) {
+  const token = window.localStorage.getItem("GITHUB_TOKEN") || "";
+  const started = Date.now();
+
+  while (Date.now() - started < timeoutMs) {
+    const res = await fetch(
+      `https://api.github.com/repos/thomasrobert1/Outil-de-Gestion-d-Inventaire/issues/${issueNumber}/comments`,
+      {
+        headers: {
+          "Accept": "application/vnd.github+json",
+          "Authorization": `Bearer ${token}`
+        }
+      }
+    );
+
+    if (res.ok) {
+      const comments = await res.json();
+      const marker = comments.find(c => typeof c.body === "string" && c.body.startsWith("IMAGE_SAVED"));
+      if (marker) {
+        const lines = marker.body.split("\n");
+        const imageUrlLine = lines.find(l => l.startsWith("imageUrl="));
+        const imageUrl = imageUrlLine ? imageUrlLine.replace("imageUrl=", "").trim() : "";
+        if (imageUrl) return imageUrl;
+      }
+    }
+
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+
+  throw new Error("Timeout: image non générée par GitHub Actions.");
 }
 
 [
@@ -315,15 +333,9 @@ document.getElementById("btn-enregistrer-composant").addEventListener("click", a
   const categorie = document.getElementById("f-categorie").value;
   const localisation = document.getElementById("f-localisation").value.trim();
   const quantite = parseInt(document.getElementById("f-quantite").value, 10);
-  const idExistant = document.getElementById("f-id").value;
-  const quantiteEmpruntee = idExistant ? (RESERVATIONS_ACTIVES.get(idExistant) || 0) : 0;
 
   if (!reference || !description || !categorie || !localisation || isNaN(quantite)) {
     alert("Merci de remplir au minimum : référence, description, catégorie, localisation et quantité.");
-    return;
-  }
-  if (idExistant && quantite < quantiteEmpruntee) {
-    alert(`Impossible de réduire le stock à ${quantite} car ${quantiteEmpruntee} unité(s) sont déjà empruntées.`);
     return;
   }
 
@@ -335,14 +347,16 @@ document.getElementById("btn-enregistrer-composant").addEventListener("click", a
     let photoUrl = null;
     const fichierPhoto = document.getElementById("f-photo").files[0];
     if (fichierPhoto) {
-      photoUrl = await televerserImage(fichierPhoto, "images");
+      const dataUrl = await fileToDataUrl(fichierPhoto);
+      const issue = await creerIssueUploadImage(reference, dataUrl);
+      photoUrl = await attendreImageDepuisIssue(issue.number);
     }
 
     const donnees = {
       reference,
       description,
-      categorie: normaliserCategorie(categorie),
-      localisation: document.getElementById("f-localisation").value.trim(),
+      categorie,
+      localisation,
       quantite,
       prix: parseFloat(document.getElementById("f-prix").value) || null,
       numeroSerie: document.getElementById("f-numero-serie").value.trim(),
@@ -352,9 +366,9 @@ document.getElementById("btn-enregistrer-composant").addEventListener("click", a
     };
     if (photoUrl) donnees.photoUrl = photoUrl;
 
+    const idExistant = document.getElementById("f-id").value;
     if (idExistant) {
       if (quantite === 0) {
-        // Si la quantité totale est 0 et qu'aucune unité n'est empruntée, supprimer le composant
         await deleteDoc(doc(db, "composants", idExistant));
       } else {
         await updateDoc(doc(db, "composants", idExistant), donnees);
@@ -374,5 +388,4 @@ document.getElementById("btn-enregistrer-composant").addEventListener("click", a
   }
 });
 
-await initialiserListesReferentiel();
-await chargerComposants();
+chargerComposants();
