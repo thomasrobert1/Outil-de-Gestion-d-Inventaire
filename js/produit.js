@@ -2,9 +2,10 @@
 // PRODUIT.JS — Fiche détaillée d'un composant + réservations
 // ============================================================
 import {
-  db, storage, doc, getDoc, updateDoc, deleteDoc, collection, addDoc,
-  getDocs, query, where, orderBy, ref, uploadBytes, getDownloadURL,
-  PERSONNES, CATEGORIES, LIGNES_CREDIT
+  db, doc, getDoc, updateDoc, deleteDoc, collection, addDoc,
+  getDocs, query, where, orderBy,
+  PERSONNES, CATEGORIES, LIGNES_CREDIT, normaliserCategorie,
+  COLLECTIONS_REFERENTIELS, chargerLibellesCollection, televerserImage
 } from "./firebase-config.js";
 import { injecterSidebar, formaterDate, statutReservation } from "./sidebar.js";
 
@@ -52,16 +53,25 @@ async function ajouterMembreDepuisReservation() {
 }
 
 async function chargerFiche() {
-  const snap = await getDoc(doc(db, "composants", composantId));
-  if (!snap.exists()) {
-    document.getElementById("zone-fiche").innerHTML = `<div class="etat-vide__titre">Composant introuvable.</div>`;
-    return;
-  }
-  COMPOSANT_ACTUEL = { id: snap.id, ...snap.data() };
+  try {
+    const snap = await getDoc(doc(db, "composants", composantId));
+    if (!snap.exists()) {
+      document.getElementById("zone-fiche").innerHTML = `<div class="etat-vide__titre">Composant introuvable.</div>`;
+      return;
+    }
+    COMPOSANT_ACTUEL = { id: snap.id, ...snap.data(), categorie: normaliserCategorie(snap.data().categorie) };
 
-  const reservations = await chargerReservationsDuComposant();
-  RESERVATIONS_COURANTES = reservations;
-  rendreFiche(COMPOSANT_ACTUEL, reservations);
+    const reservations = await chargerReservationsDuComposant();
+    RESERVATIONS_COURANTES = reservations;
+    rendreFiche(COMPOSANT_ACTUEL, reservations);
+  } catch (err) {
+    console.error(err);
+    document.getElementById("zone-fiche").innerHTML = `
+      <div class="etat-vide">
+        <div class="etat-vide__titre">Erreur de chargement</div>
+        <p>Impossible de charger la fiche : ${escapeHtml(err.message || "Erreur inconnue")}</p>
+      </div>`;
+  }
 }
 
 async function chargerReservationsDuComposant() {
@@ -103,7 +113,7 @@ function rendreFiche(c, reservations) {
         ${estCompletementEmprunte ? '<span class="badge badge-emprunte">Complètement emprunté</span>' : quantiteEnCours > 0 ? '<span class="badge badge-emprunte">Partiellement emprunté</span>' : '<span class="badge badge-dispo">Disponible</span>'}
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn btn-secondaire btn-sm" id="btn-modifier-composant">Modifier</button>
-          <button class="btn btn-danger btn-sm" id="btn-supprimer-composant">Supprimer</button>
+          <button class="btn btn-danger btn-sm" id="btn-supprimer-bdd">Supprimer de la base de données</button>
           <button class="btn btn-primaire" id="btn-ouvrir-reservation" ${estCompletementEmprunte ? "disabled" : ""}>
             Réserver
           </button>
@@ -199,7 +209,7 @@ function rendreFiche(c, reservations) {
 
   document.getElementById("btn-ouvrir-reservation")?.addEventListener("click", () => ouvrirModaleReservation());
   document.getElementById("btn-modifier-composant")?.addEventListener("click", ouvrirModaleEdition);
-  document.getElementById("btn-supprimer-composant")?.addEventListener("click", supprimerQuantiteComposant);
+  document.getElementById("btn-supprimer-bdd")?.addEventListener("click", supprimerComposantBaseDeDonnees);
   document.querySelectorAll("[data-edit-reservation]").forEach(btn => {
     btn.addEventListener("click", () => ouvrirModaleReservation(RESERVATIONS_COURANTES.find(r => r.id === btn.dataset.editReservation) || null));
   });
@@ -217,6 +227,25 @@ async function supprimerReservation(reservationId) {
   } catch (err) {
     console.error(err);
     alert("Erreur lors de la suppression : " + err.message);
+  }
+}
+
+async function supprimerComposantBaseDeDonnees() {
+  if (!COMPOSANT_ACTUEL) return;
+
+  const confirmation = window.confirm(
+    `Supprimer définitivement "${COMPOSANT_ACTUEL.reference}" de la base de données ?\n\nCette action supprimera aussi ses réservations liées.`
+  );
+  if (!confirmation) return;
+
+  try {
+    const reservationsSnap = await getDocs(query(collection(db, "reservations"), where("composantId", "==", COMPOSANT_ACTUEL.id)));
+    await Promise.all(reservationsSnap.docs.map(r => deleteDoc(doc(db, "reservations", r.id))));
+    await deleteDoc(doc(db, "composants", COMPOSANT_ACTUEL.id));
+    window.location.href = "index.html";
+  } catch (err) {
+    console.error(err);
+    alert("Erreur lors de la suppression de la base de données : " + err.message);
   }
 }
 
@@ -255,12 +284,26 @@ function remplirSelectEdition(select, valeurs, valeurSelectionnee = "") {
   }).join("");
 }
 
+async function initialiserListesReferentiel() {
+  const [categories, lignesCredit] = await Promise.all([
+    chargerLibellesCollection(COLLECTIONS_REFERENTIELS.categories, CATEGORIES),
+    chargerLibellesCollection(COLLECTIONS_REFERENTIELS.lignesCredit, LIGNES_CREDIT)
+  ]);
+
+  remplirSelectEdition(document.getElementById("edit-categorie"), categories);
+  remplirSelectEdition(document.getElementById("edit-ligne-credit"), lignesCredit);
+
+  return { categories, lignesCredit };
+}
+
 const modaleEdition = document.getElementById("modale-edition-composant");
 const modaleResa = document.getElementById("modale-reservation");
-await chargerMembres();
-
-remplirSelectEdition(document.getElementById("edit-categorie"), CATEGORIES);
-remplirSelectEdition(document.getElementById("edit-ligne-credit"), LIGNES_CREDIT);
+try {
+  await initialiserListesReferentiel();
+  await chargerMembres();
+} catch (err) {
+  console.error(err);
+}
 
 document.querySelectorAll('[data-fermer-modale="modale-edition-composant"]').forEach(btn => {
   btn.addEventListener("click", () => { modaleEdition.hidden = true; });
@@ -299,16 +342,13 @@ document.getElementById("btn-enregistrer-edition").addEventListener("click", asy
     let photoUrl = COMPOSANT_ACTUEL?.photoUrl || null;
     const fichierPhoto = document.getElementById("edit-photo").files[0];
     if (fichierPhoto) {
-      const cheminStockage = `images/${Date.now()}_${fichierPhoto.name}`;
-      const storageRef = ref(storage, cheminStockage);
-      await uploadBytes(storageRef, fichierPhoto);
-      photoUrl = await getDownloadURL(storageRef);
+      photoUrl = await televerserImage(fichierPhoto, "images");
     }
 
     const donnees = {
       reference,
       description,
-      categorie,
+      categorie: normaliserCategorie(categorie),
       localisation: document.getElementById("edit-localisation").value.trim(),
       quantite,
       prix: parseFloat(document.getElementById("edit-prix").value) || null,
@@ -319,7 +359,7 @@ document.getElementById("btn-enregistrer-edition").addEventListener("click", asy
       ...(photoUrl ? { photoUrl } : {})
     };
 
-    // Si la quantité est réduite à 0, supprimer le composant
+    // Si la quantité totale est 0, supprimer le composant
     if (quantite === 0) {
       await deleteDoc(doc(db, "composants", COMPOSANT_ACTUEL.id));
       window.location.href = "index.html";
@@ -337,7 +377,7 @@ document.getElementById("btn-enregistrer-edition").addEventListener("click", asy
   }
 });
 
-function ouvrirModaleEdition() {
+async function ouvrirModaleEdition() {
   if (!COMPOSANT_ACTUEL) return;
   document.getElementById("modale-edition-composant-titre").textContent = "Modifier le composant";
   document.getElementById("edit-id").value = COMPOSANT_ACTUEL.id;
@@ -350,8 +390,12 @@ function ouvrirModaleEdition() {
   document.getElementById("edit-url").value = COMPOSANT_ACTUEL.url || "";
   document.getElementById("edit-commentaire").value = COMPOSANT_ACTUEL.commentaire || "";
   document.getElementById("edit-photo").value = "";
-  remplirSelectEdition(document.getElementById("edit-categorie"), CATEGORIES, COMPOSANT_ACTUEL.categorie || "");
-  remplirSelectEdition(document.getElementById("edit-ligne-credit"), LIGNES_CREDIT, COMPOSANT_ACTUEL.ligneCredit || "");
+  const [categories, lignesCredit] = await Promise.all([
+    chargerLibellesCollection(COLLECTIONS_REFERENTIELS.categories, CATEGORIES),
+    chargerLibellesCollection(COLLECTIONS_REFERENTIELS.lignesCredit, LIGNES_CREDIT)
+  ]);
+  remplirSelectEdition(document.getElementById("edit-categorie"), categories, COMPOSANT_ACTUEL.categorie || "");
+  remplirSelectEdition(document.getElementById("edit-ligne-credit"), lignesCredit, COMPOSANT_ACTUEL.ligneCredit || "");
   modaleEdition.hidden = false;
 }
 
