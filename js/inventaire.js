@@ -3,7 +3,8 @@
 // ============================================================
 import {
   db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc,
-  CATEGORIES, LIGNES_CREDIT
+  CATEGORIES, LIGNES_CREDIT,
+  chargerLibellesCollection, COLLECTIONS_REFERENTIELS
 } from "./firebase-config.js";
 import { injecterSidebar } from "./sidebar.js";
 
@@ -31,11 +32,12 @@ remplirSelect(document.getElementById("filtre-ligne-credit"), LIGNES_CREDIT);
 // Chargement des données depuis Firestore
 // ----------------------------------------------------------
 async function chargerComposants() {
-  const snap = await getDocs(collection(db, "composants"));
+  const [snap, localisations] = await Promise.all([
+    getDocs(collection(db, "composants")),
+    chargerLibellesCollection(COLLECTIONS_REFERENTIELS.localisations)
+  ]);
   TOUS_COMPOSANTS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  // Localisations dynamiques
-  const localisations = [...new Set(TOUS_COMPOSANTS.map(c => c.localisation).filter(Boolean))].sort();
   remplirSelect(document.getElementById("filtre-localisation"), localisations);
   remplirSelect(document.getElementById("f-localisation"), localisations, true);
 
