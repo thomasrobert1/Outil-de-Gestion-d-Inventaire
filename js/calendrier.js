@@ -96,7 +96,9 @@ async function chargerReservations() {
 
 async function chargerMembres() {
   const snap = await getDocs(collection(db, "membres"));
-  MEMBRES = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.nom.localeCompare(b.nom));
+  MEMBRES = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.nom || "").localeCompare(b.nom || ""));
   const select = document.getElementById("r-personne");
   if (!select) return;
   const valeurs = MEMBRES.map(m => m.nom).filter(Boolean);
@@ -401,6 +403,24 @@ function escapeHtml(str) {
 }
 function escapeAttr(str) { return escapeHtml(str); }
 
-await chargerComposants();
-await chargerMembres();
-await chargerReservations();
+async function initialiserPageCalendrier() {
+  try {
+    await chargerComposants();
+    await chargerMembres();
+    await chargerReservations();
+  } catch (err) {
+    console.error(err);
+    const zone = document.getElementById("zone-calendrier");
+    if (zone) {
+      zone.innerHTML = `
+        <div class="tableau-conteneur">
+          <div class="etat-vide">
+            <div class="etat-vide__titre">Erreur de chargement</div>
+            <p>${escapeHtml(err?.message || "Une erreur est survenue lors du chargement du calendrier.")}</p>
+          </div>
+        </div>`;
+    }
+  }
+}
+
+await initialiserPageCalendrier();
