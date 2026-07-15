@@ -24,6 +24,7 @@ let COMPOSANT_ACTUEL = null;
 let RESERVATIONS_COURANTES = [];
 let RESERVATION_A_EDITER = null;
 let MEMBRES = [];
+let LOCALISATIONS_REFERENTIEL = [];
 
 async function chargerMembres() {
   const snap = await getDocs(collection(db, "membres"));
@@ -80,6 +81,43 @@ async function chargerReservationsDuComposant() {
   return snap.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
+}
+
+function normaliserRepartitionLocalisations(composant) {
+  const repartitionBrute = Array.isArray(composant?.localisationsQuantites)
+    ? composant.localisationsQuantites
+    : [];
+
+  const map = new Map();
+  repartitionBrute.forEach(entree => {
+    const localisation = String(entree?.localisation || "").trim();
+    const quantite = parseInt(entree?.quantite, 10);
+    if (!localisation || isNaN(quantite) || quantite < 1) return;
+    map.set(localisation, (map.get(localisation) || 0) + quantite);
+  });
+
+  if (map.size === 0 && composant?.localisation) {
+    const quantiteFallback = parseInt(composant?.quantite, 10) || 0;
+    if (quantiteFallback > 0) {
+      map.set(String(composant.localisation).trim(), quantiteFallback);
+    }
+  }
+
+  return Array.from(map.entries())
+    .map(([localisation, quantite]) => ({ localisation, quantite }))
+    .sort((a, b) => (b.quantite - a.quantite) || a.localisation.localeCompare(b.localisation));
+}
+
+function rendreRepartitionLocalisationsFiche(composant) {
+  const repartition = normaliserRepartitionLocalisations(composant);
+  if (repartition.length === 0) return "—";
+
+  return `<div class="repartition-localisations-fiche">${repartition.map(item => `
+    <div class="repartition-localisations-fiche__ligne">
+      <span class="badge badge-couleur badge-localisation">${escapeHtml(item.localisation)}</span>
+      <span class="badge-quantite-localisation">${item.quantite}</span>
+    </div>
+  `).join("")}</div>`;
 }
 
 function rendreFiche(c, reservations) {
@@ -157,7 +195,7 @@ function rendreFiche(c, reservations) {
             </div>
             <div>
               <div class="attribut__label">Localisation</div>
-              <div class="attribut__valeur">${escapeHtml(c.localisation || "—")}</div>
+              <div class="attribut__valeur">${rendreRepartitionLocalisationsFiche(c)}</div>
             </div>
             <div>
               <div class="attribut__label">Numéro de série</div>
@@ -285,15 +323,128 @@ function remplirSelectEdition(select, valeurs, valeurSelectionnee = "") {
 }
 
 async function initialiserListesReferentiel() {
-  const [categories, lignesCredit] = await Promise.all([
+  const [categories, lignesCredit, localisations] = await Promise.all([
     chargerLibellesCollection(COLLECTIONS_REFERENTIELS.categories, CATEGORIES),
-    chargerLibellesCollection(COLLECTIONS_REFERENTIELS.lignesCredit, LIGNES_CREDIT)
+    chargerLibellesCollection(COLLECTIONS_REFERENTIELS.lignesCredit, LIGNES_CREDIT),
+    chargerLibellesCollection(COLLECTIONS_REFERENTIELS.localisations, [])
   ]);
+
+  LOCALISATIONS_REFERENTIEL = localisations;
 
   remplirSelectEdition(document.getElementById("edit-categorie"), categories);
   remplirSelectEdition(document.getElementById("edit-ligne-credit"), lignesCredit);
 
-  return { categories, lignesCredit };
+  return { categories, lignesCredit, localisations };
+}
+
+function lignesRepartitionModale() {
+  return Array.from(document.querySelectorAll(".repartition-ligne"));
+}
+
+function lireRepartitionDepuisModale() {
+  const lignes = lignesRepartitionModale();
+  if (lignes.length === 0) {
+    return { repartition: [], total: 0, erreur: "Ajoutez au moins une localisation." };
+  }
+
+  const map = new Map();
+  for (const ligne of lignes) {
+    const select = ligne.querySelector('[data-repartition-localisation]');
+    const inputQte = ligne.querySelector('[data-repartition-quantite]');
+    const localisation = String(select?.value || "").trim();
+    const quantite = parseInt(inputQte?.value, 10);
+
+    if (!localisation) {
+      return { repartition: [], total: 0, erreur: "Sélectionnez une localisation sur chaque ligne." };
+    }
+    if (isNaN(quantite) || quantite < 1) {
+      return { repartition: [], total: 0, erreur: "Chaque quantité de localisation doit être supérieure ou égale à 1." };
+    }
+    map.set(localisation, (map.get(localisation) || 0) + quantite);
+  }
+
+  const repartition = Array.from(map.entries())
+    .map(([localisation, quantite]) => ({ localisation, quantite }))
+    .sort((a, b) => (b.quantite - a.quantite) || a.localisation.localeCompare(b.localisation));
+
+  const total = repartition.reduce((s, item) => s + item.quantite, 0);
+  return { repartition, total, erreur: null };
+}
+
+function mettreAJourAideRepartition() {
+  const aide = document.getElementById("edit-repartition-aide");
+  if (!aide) return;
+
+  const quantiteTotale = parseInt(document.getElementById("edit-quantite").value, 10) || 0;
+  const { total, erreur } = lireRepartitionDepuisModale();
+
+  if (erreur) {
+    aide.textContent = erreur;
+    return;
+  }
+
+  if (total === quantiteTotale) {
+    aide.textContent = `Répartition valide: ${total} / ${quantiteTotale}.`;
+  } else {
+    aide.textContent = `Répartition incomplète: ${total} / ${quantiteTotale}.`;
+  }
+}
+
+function creerLigneRepartition(localisation = "", quantite = 1) {
+  const ligne = document.createElement("div");
+  ligne.className = "repartition-ligne";
+
+  const options = LOCALISATIONS_REFERENTIEL
+    .map(libelle => `<option value="${escapeAttr(libelle)}"${libelle === localisation ? " selected" : ""}>${escapeHtml(libelle)}</option>`)
+    .join("");
+
+  ligne.innerHTML = `
+    <select data-repartition-localisation>
+      <option value="">Sélectionner une localisation</option>
+      ${options}
+    </select>
+    <input type="number" data-repartition-quantite min="1" value="${Math.max(1, parseInt(quantite, 10) || 1)}">
+    <button type="button" class="btn btn-secondaire btn-sm" data-repartition-supprimer>Retirer</button>
+  `;
+
+  ligne.querySelector('[data-repartition-supprimer]').addEventListener("click", () => {
+    ligne.remove();
+    if (lignesRepartitionModale().length === 0) {
+      ajouterLigneRepartition();
+    }
+    mettreAJourAideRepartition();
+  });
+
+  ligne.querySelector('[data-repartition-localisation]').addEventListener("change", mettreAJourAideRepartition);
+  ligne.querySelector('[data-repartition-quantite]').addEventListener("input", mettreAJourAideRepartition);
+
+  return ligne;
+}
+
+function ajouterLigneRepartition(localisation = "", quantite = 1) {
+  const container = document.getElementById("edit-repartition-localisations");
+  if (!container) return;
+  container.appendChild(creerLigneRepartition(localisation, quantite));
+  mettreAJourAideRepartition();
+}
+
+function initialiserRepartitionModale(repartition = []) {
+  const container = document.getElementById("edit-repartition-localisations");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (repartition.length === 0) {
+    ajouterLigneRepartition();
+    return;
+  }
+
+  repartition.forEach(item => {
+    ajouterLigneRepartition(item.localisation, item.quantite);
+  });
+}
+
+async function chargerLocalisationsReferentielAvecFallback(fallback = []) {
+  LOCALISATIONS_REFERENTIEL = await chargerLibellesCollection(COLLECTIONS_REFERENTIELS.localisations, fallback);
 }
 
 const modaleEdition = document.getElementById("modale-edition-composant");
@@ -312,6 +463,12 @@ document.querySelectorAll('[data-fermer-modale="modale-edition-composant"]').for
 document.querySelectorAll("[data-ajouter-membre]").forEach(btn => {
   btn.addEventListener("click", ajouterMembreDepuisReservation);
 });
+
+document.getElementById("btn-ajouter-localisation")?.addEventListener("click", () => {
+  ajouterLigneRepartition();
+});
+
+document.getElementById("edit-quantite")?.addEventListener("input", mettreAJourAideRepartition);
 
 document.getElementById("btn-enregistrer-edition").addEventListener("click", async () => {
   const reference = document.getElementById("edit-reference").value.trim();
@@ -345,11 +502,24 @@ document.getElementById("btn-enregistrer-edition").addEventListener("click", asy
       photoUrl = await televerserImage(fichierPhoto, "images");
     }
 
+    const { repartition, total, erreur } = lireRepartitionDepuisModale();
+    if (quantite > 0 && erreur) {
+      alert(erreur);
+      return;
+    }
+    if (quantite > 0 && total !== quantite) {
+      alert(`La somme des localisations doit être égale à la quantité totale (${total}/${quantite}).`);
+      return;
+    }
+
+    const localisationPrincipale = repartition[0]?.localisation || "";
+
     const donnees = {
       reference,
       description,
       categorie: normaliserCategorie(categorie),
-      localisation: document.getElementById("edit-localisation").value.trim(),
+      localisation: localisationPrincipale,
+      localisationsQuantites: repartition,
       quantite,
       prix: parseFloat(document.getElementById("edit-prix").value) || null,
       numeroSerie: document.getElementById("edit-numero-serie").value.trim(),
@@ -383,19 +553,28 @@ async function ouvrirModaleEdition() {
   document.getElementById("edit-id").value = COMPOSANT_ACTUEL.id;
   document.getElementById("edit-reference").value = COMPOSANT_ACTUEL.reference || "";
   document.getElementById("edit-description").value = COMPOSANT_ACTUEL.description || "";
-  document.getElementById("edit-localisation").value = COMPOSANT_ACTUEL.localisation || "";
   document.getElementById("edit-quantite").value = COMPOSANT_ACTUEL.quantite ?? 0;
   document.getElementById("edit-prix").value = COMPOSANT_ACTUEL.prix ?? "";
   document.getElementById("edit-numero-serie").value = COMPOSANT_ACTUEL.numeroSerie || "";
   document.getElementById("edit-url").value = COMPOSANT_ACTUEL.url || "";
   document.getElementById("edit-commentaire").value = COMPOSANT_ACTUEL.commentaire || "";
   document.getElementById("edit-photo").value = "";
+  const repartitionExistante = normaliserRepartitionLocalisations(COMPOSANT_ACTUEL);
+  const fallbackLocalisations = [...new Set([
+    ...(repartitionExistante.map(item => item.localisation)),
+    COMPOSANT_ACTUEL.localisation || ""
+  ].filter(Boolean))];
+
   const [categories, lignesCredit] = await Promise.all([
     chargerLibellesCollection(COLLECTIONS_REFERENTIELS.categories, CATEGORIES),
     chargerLibellesCollection(COLLECTIONS_REFERENTIELS.lignesCredit, LIGNES_CREDIT)
   ]);
+  await chargerLocalisationsReferentielAvecFallback(fallbackLocalisations);
+
   remplirSelectEdition(document.getElementById("edit-categorie"), categories, COMPOSANT_ACTUEL.categorie || "");
   remplirSelectEdition(document.getElementById("edit-ligne-credit"), lignesCredit, COMPOSANT_ACTUEL.ligneCredit || "");
+  initialiserRepartitionModale(repartitionExistante);
+  mettreAJourAideRepartition();
   modaleEdition.hidden = false;
 }
 
