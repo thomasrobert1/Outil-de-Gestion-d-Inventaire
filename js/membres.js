@@ -112,7 +112,14 @@ async function initialiserReferentielsParDefaut() {
   }
 
   if (localisationsExistantes.empty) {
-    const localisations = [...new Set(composantsSnap.docs.map(d => d.data().localisation).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const localisations = [...new Set(composantsSnap.docs.flatMap(d => {
+      const data = d.data();
+      const depuisRepartition = Array.isArray(data.localisationsQuantites)
+        ? data.localisationsQuantites.map(item => item?.localisation).filter(Boolean)
+        : [];
+      if (depuisRepartition.length > 0) return depuisRepartition;
+      return data.localisation ? [data.localisation] : [];
+    }))].sort((a, b) => a.localeCompare(b));
     if (localisations.length > 0) {
       await Promise.all(localisations.map(libelle => addDoc(collection(db, COLLECTIONS_REFERENTIELS.localisations), { libelle })));
     }
