@@ -10,6 +10,36 @@ let TOUTES_RESERVATIONS = [];
 let COMPOSANTS = [];
 let MEMBRES = [];
 let RESERVATION_A_EDITER = null;
+let COMPOSANTS_PAR_LIBELLE = new Map();
+
+function normaliserTexteRecherche(valeur) {
+  return String(valeur || "").trim().toLowerCase();
+}
+
+function libelleComposant(c) {
+  return `${c.reference || "Sans référence"} — ${c.description || "Sans description"}`;
+}
+
+function definirComposantSelectionneParId(composantId) {
+  const inputRecherche = document.getElementById("r-composant-recherche");
+  const inputId = document.getElementById("r-composant");
+  if (!inputRecherche || !inputId) return;
+
+  inputId.value = composantId || "";
+  const composant = COMPOSANTS.find(c => c.id === composantId);
+  inputRecherche.value = composant ? libelleComposant(composant) : "";
+}
+
+function synchroniserComposantSelectionneDepuisRecherche() {
+  const inputRecherche = document.getElementById("r-composant-recherche");
+  const inputId = document.getElementById("r-composant");
+  if (!inputRecherche || !inputId) return "";
+
+  const texte = inputRecherche.value || "";
+  const id = COMPOSANTS_PAR_LIBELLE.get(normaliserTexteRecherche(texte)) || "";
+  inputId.value = id;
+  return id;
+}
 
 function remplirFiltrePersonne() {
   const select = document.getElementById("filtre-personne");
@@ -21,12 +51,16 @@ function remplirFiltrePersonne() {
 async function chargerComposants() {
   const snap = await getDocs(collection(db, "composants"));
   COMPOSANTS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  COMPOSANTS_PAR_LIBELLE = new Map();
 
-  const select = document.getElementById("r-composant");
-  if (!select) return;
-  select.innerHTML = `<option value="">— Sélectionner —</option>${COMPOSANTS.map(c => `
-    <option value="${escapeAttr(c.id)}">${escapeHtml(c.reference || "Sans référence")} — ${escapeHtml(c.description || "Sans description")}</option>
-  `).join("")}`;
+  const datalist = document.getElementById("r-composants-liste");
+  if (!datalist) return;
+
+  datalist.innerHTML = COMPOSANTS.map(c => {
+    const libelle = libelleComposant(c);
+    COMPOSANTS_PAR_LIBELLE.set(normaliserTexteRecherche(libelle), c.id);
+    return `<option value="${escapeAttr(libelle)}"></option>`;
+  }).join("");
 }
 
 async function chargerMembres() {
@@ -150,7 +184,7 @@ function ouvrirModaleEditionReservation(reservation) {
   RESERVATION_A_EDITER = reservation;
   document.getElementById("modale-reservation").hidden = false;
   document.getElementById("r-reservation-id").value = reservation.id;
-  document.getElementById("r-composant").value = reservation.composantId || "";
+  definirComposantSelectionneParId(reservation.composantId || "");
   document.getElementById("r-date-debut").value = reservation.dateDebut || "";
   document.getElementById("r-date-fin").value = reservation.dateFin || "";
   document.getElementById("r-quantite").value = reservation.quantite || "1";
@@ -171,7 +205,7 @@ function ouvrirModaleEditionReservation(reservation) {
 
 async function enregistrerReservationDepuisHistorique() {
   const reservationId = document.getElementById("r-reservation-id").value;
-  const composantId = document.getElementById("r-composant").value;
+  const composantId = synchroniserComposantSelectionneDepuisRecherche();
   const dateDebut = document.getElementById("r-date-debut").value;
   const dateFin = document.getElementById("r-date-fin").value;
   const quantite = parseInt(document.getElementById("r-quantite").value, 10);
@@ -233,6 +267,8 @@ document.querySelectorAll("[data-ajouter-membre]").forEach(btn => {
 });
 
 document.getElementById("btn-confirmer-reservation").addEventListener("click", enregistrerReservationDepuisHistorique);
+document.getElementById("r-composant-recherche")?.addEventListener("change", synchroniserComposantSelectionneDepuisRecherche);
+document.getElementById("r-composant-recherche")?.addEventListener("blur", synchroniserComposantSelectionneDepuisRecherche);
 
 async function initialiserPageHistorique() {
   try {
