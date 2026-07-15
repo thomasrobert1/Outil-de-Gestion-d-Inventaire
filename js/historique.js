@@ -20,6 +20,23 @@ function libelleComposant(c) {
   return `${c.reference || "Sans référence"} — ${c.description || "Sans description"}`;
 }
 
+function trouverComposantDepuisRecherche(texteSaisi) {
+  const recherche = normaliserTexteRecherche(texteSaisi);
+  if (!recherche) return null;
+
+  const idExact = COMPOSANTS_PAR_LIBELLE.get(recherche);
+  if (idExact) return COMPOSANTS.find(c => c.id === idExact) || null;
+
+  const candidats = COMPOSANTS.filter(c => {
+    const reference = normaliserTexteRecherche(c.reference || "");
+    const description = normaliserTexteRecherche(c.description || "");
+    const libelle = normaliserTexteRecherche(libelleComposant(c));
+    return reference.includes(recherche) || description.includes(recherche) || libelle.includes(recherche);
+  });
+
+  return candidats.length === 1 ? candidats[0] : null;
+}
+
 function definirComposantSelectionneParId(composantId) {
   const inputRecherche = document.getElementById("r-composant-recherche");
   const inputId = document.getElementById("r-composant");
@@ -36,8 +53,15 @@ function synchroniserComposantSelectionneDepuisRecherche() {
   if (!inputRecherche || !inputId) return "";
 
   const texte = inputRecherche.value || "";
-  const id = COMPOSANTS_PAR_LIBELLE.get(normaliserTexteRecherche(texte)) || "";
+  const composant = trouverComposantDepuisRecherche(texte);
+  const id = composant?.id || "";
   inputId.value = id;
+
+  // Quand la recherche donne un résultat unique, on normalise le libellé affiché.
+  if (composant) {
+    inputRecherche.value = libelleComposant(composant);
+  }
+
   return id;
 }
 
