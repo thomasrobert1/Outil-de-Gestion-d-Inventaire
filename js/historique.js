@@ -1,7 +1,7 @@
 // ============================================================
 // HISTORIQUE.JS — Liste complète des réservations, filtrable
 // ============================================================
-import { db, collection, getDocs, updateDoc, deleteDoc, doc } from "./firebase-config.js";
+import { db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from "./firebase-config.js";
 import { injecterSidebar, formaterDate, statutReservation } from "./sidebar.js";
 
 injecterSidebar("historique");
@@ -31,7 +31,9 @@ async function chargerComposants() {
 
 async function chargerMembres() {
   const snap = await getDocs(collection(db, "membres"));
-  MEMBRES = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.nom.localeCompare(b.nom));
+  MEMBRES = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.nom || "").localeCompare(b.nom || ""));
   const select = document.getElementById("r-personne");
   if (!select) return;
   const valeurs = MEMBRES.map(m => m.nom).filter(Boolean);
@@ -232,6 +234,24 @@ document.querySelectorAll("[data-ajouter-membre]").forEach(btn => {
 
 document.getElementById("btn-confirmer-reservation").addEventListener("click", enregistrerReservationDepuisHistorique);
 
-await chargerComposants();
-await chargerMembres();
-await chargerHistorique();
+async function initialiserPageHistorique() {
+  try {
+    await chargerComposants();
+    await chargerMembres();
+    await chargerHistorique();
+  } catch (err) {
+    console.error(err);
+    const zone = document.getElementById("zone-historique");
+    if (zone) {
+      zone.innerHTML = `
+        <div class="tableau-conteneur">
+          <div class="etat-vide">
+            <div class="etat-vide__titre">Erreur de chargement</div>
+            <p>${escapeHtml(err?.message || "Une erreur est survenue lors du chargement de l'historique.")}</p>
+          </div>
+        </div>`;
+    }
+  }
+}
+
+await initialiserPageHistorique();
