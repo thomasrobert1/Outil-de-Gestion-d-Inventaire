@@ -460,6 +460,49 @@ tbody td { padding: 11px 14px; font-size: 13px; vertical-align: middle; }
 .champ-aide { font-size: 11.5px; color: var(--gris-500); }
 textarea { resize: vertical; min-height: 70px; font-family: var(--font-ui); }
 
+.repartition-localisations-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.repartition-ligne {
+  display: grid;
+  grid-template-columns: 1fr 110px auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.repartition-ligne .btn {
+  white-space: nowrap;
+}
+
+.repartition-localisations-fiche {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.repartition-localisations-fiche__ligne {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.badge-quantite-localisation {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--gris-700);
+  font-weight: 700;
+}
+
+.cell-localisations-multi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 /* ============================================================
    HISTORIQUE / RÉSERVATIONS — liste
    ============================================================ */
@@ -575,4 +618,5 @@ textarea { resize: vertical; min-height: 70px; font-family: var(--font-ui); }
   .sidebar { position: relative; height: auto; }
   .fiche-produit { grid-template-columns: 1fr; }
   .grille-attributs { grid-template-columns: 1fr; }
+  .repartition-ligne { grid-template-columns: 1fr; }
 }
