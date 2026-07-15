@@ -58,9 +58,10 @@
       <form id="form-reservation">
         <div class="champ">
           <label>Composant *</label>
-          <select id="r-composant" required>
-            <option value="">— Sélectionner —</option>
-          </select>
+          <input type="hidden" id="r-composant">
+          <input type="text" id="r-composant-recherche" list="r-composants-liste" placeholder="Tape une référence ou une description" autocomplete="off" required>
+          <datalist id="r-composants-liste"></datalist>
+          <small class="texte-discret">Commence à taper pour rechercher un composant.</small>
         </div>
         <div class="champ-ligne">
           <div class="champ">
