@@ -18,17 +18,50 @@ let COMPOSANTS = [];
 let MEMBRES = [];
 let dateSelectionnee = null;
 let RESERVATION_A_EDITER = null;
+let COMPOSANTS_PAR_LIBELLE = new Map();
+
+function normaliserTexteRecherche(valeur) {
+  return String(valeur || "").trim().toLowerCase();
+}
+
+function libelleComposant(c) {
+  return `${c.reference || "Sans référence"} — ${c.description || "Sans description"}`;
+}
+
+function definirComposantSelectionneParId(composantId) {
+  const inputRecherche = document.getElementById("r-composant-recherche");
+  const inputId = document.getElementById("r-composant");
+  if (!inputRecherche || !inputId) return;
+
+  inputId.value = composantId || "";
+  const composant = COMPOSANTS.find(c => c.id === composantId);
+  inputRecherche.value = composant ? libelleComposant(composant) : "";
+}
+
+function synchroniserComposantSelectionneDepuisRecherche() {
+  const inputRecherche = document.getElementById("r-composant-recherche");
+  const inputId = document.getElementById("r-composant");
+  if (!inputRecherche || !inputId) return "";
+
+  const texte = inputRecherche.value || "";
+  const id = COMPOSANTS_PAR_LIBELLE.get(normaliserTexteRecherche(texte)) || "";
+  inputId.value = id;
+  return id;
+}
 
 async function chargerComposants() {
   const snap = await getDocs(collection(db, "composants"));
   COMPOSANTS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  COMPOSANTS_PAR_LIBELLE = new Map();
 
-  const select = document.getElementById("r-composant");
-  if (!select) return;
+  const datalist = document.getElementById("r-composants-liste");
+  if (!datalist) return;
 
-  select.innerHTML = `<option value="">— Sélectionner —</option>${COMPOSANTS.map(c => `
-    <option value="${escapeAttr(c.id)}">${escapeHtml(c.reference || "Sans référence")} — ${escapeHtml(c.description || "Sans description")}</option>
-  `).join("")}`;
+  datalist.innerHTML = COMPOSANTS.map(c => {
+    const libelle = libelleComposant(c);
+    COMPOSANTS_PAR_LIBELLE.set(normaliserTexteRecherche(libelle), c.id);
+    return `<option value="${escapeAttr(libelle)}"></option>`;
+  }).join("");
 }
 
 async function chargerReservations() {
@@ -205,7 +238,7 @@ function ouvrirModaleReservation(reservation = null) {
   RESERVATION_A_EDITER = reservation;
   document.getElementById("form-reservation").reset();
   const aujourdHui = new Date().toISOString().split("T")[0];
-  document.getElementById("r-composant").value = reservation?.composantId || "";
+  definirComposantSelectionneParId(reservation?.composantId || "");
   document.getElementById("r-date-debut").value = reservation?.dateDebut || dateSelectionnee || aujourdHui;
   document.getElementById("r-date-fin").value = reservation?.dateFin || "";
   document.getElementById("r-duree").value = reservation?.dureeJours || "1";
@@ -241,10 +274,13 @@ document.querySelectorAll("[data-ajouter-membre]").forEach(btn => {
   btn.addEventListener("click", ajouterMembreDepuisReservation);
 });
 
+document.getElementById("r-composant-recherche")?.addEventListener("change", synchroniserComposantSelectionneDepuisRecherche);
+document.getElementById("r-composant-recherche")?.addEventListener("blur", synchroniserComposantSelectionneDepuisRecherche);
+
 document.getElementById("btn-nouvelle-reservation")?.addEventListener("click", ouvrirModaleReservation);
 
 document.getElementById("btn-confirmer-reservation").addEventListener("click", async () => {
-  const composantId = document.getElementById("r-composant").value;
+  const composantId = synchroniserComposantSelectionneDepuisRecherche();
   const dateDebut = document.getElementById("r-date-debut").value;
   const dateFin = document.getElementById("r-date-fin").value;
   const dureeJours = parseInt(document.getElementById("r-duree").value, 10);
