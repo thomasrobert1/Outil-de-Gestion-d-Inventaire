@@ -16,6 +16,48 @@ let RESERVATIONS_ACTIVES = new Map(); // ids des composants et quantités emprun
 let RESULTATS_AFFICHES = [];
 const VALEUR_GESTION_LOCALISATIONS = "__gestion_localisations__";
 
+function normaliserRepartitionLocalisations(composant) {
+  const repartition = Array.isArray(composant?.localisationsQuantites)
+    ? composant.localisationsQuantites
+    : [];
+
+  const map = new Map();
+  repartition.forEach(item => {
+    const localisation = String(item?.localisation || "").trim();
+    const quantite = parseInt(item?.quantite, 10);
+    if (!localisation || isNaN(quantite) || quantite < 1) return;
+    map.set(localisation, (map.get(localisation) || 0) + quantite);
+  });
+
+  if (map.size === 0 && composant?.localisation) {
+    const quantiteFallback = parseInt(composant?.quantite, 10) || 0;
+    if (quantiteFallback > 0) {
+      map.set(String(composant.localisation).trim(), quantiteFallback);
+    }
+  }
+
+  return Array.from(map.entries())
+    .map(([localisation, quantite]) => ({ localisation, quantite }))
+    .sort((a, b) => (b.quantite - a.quantite) || a.localisation.localeCompare(b.localisation));
+}
+
+function listerLocalisationsComposant(composant) {
+  const repartition = normaliserRepartitionLocalisations(composant);
+  if (repartition.length > 0) return repartition.map(item => item.localisation);
+  return composant?.localisation ? [composant.localisation] : [];
+}
+
+function localisationPrincipaleComposant(composant) {
+  const localisations = listerLocalisationsComposant(composant);
+  return localisations[0] || "Non renseigné";
+}
+
+function formaterLocalisationsPourExport(composant) {
+  const repartition = normaliserRepartitionLocalisations(composant);
+  if (repartition.length === 0) return composant?.localisation || "";
+  return repartition.map(item => `${item.localisation}:${item.quantite}`).join(" | ");
+}
+
 // ----------------------------------------------------------
 // Remplissage des menus déroulants de filtres + formulaire
 // ----------------------------------------------------------
@@ -48,7 +90,7 @@ async function chargerComposants() {
   TOUS_COMPOSANTS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
   // Les menus déroulants sont pilotés par l'onglet Gestion (avec fallback sur l'existant).
-  const fallbackLocalisations = [...new Set(TOUS_COMPOSANTS.map(c => c.localisation).filter(Boolean))].sort();
+  const fallbackLocalisations = [...new Set(TOUS_COMPOSANTS.flatMap(c => listerLocalisationsComposant(c)).filter(Boolean))].sort();
   await chargerReferentielsMenus(fallbackLocalisations);
 
   const selectFormLocalisation = document.getElementById("f-localisation");
@@ -92,7 +134,7 @@ function appliquerFiltresEtAfficher() {
 
   let resultats = TOUS_COMPOSANTS.filter(c => {
     if (categorie && c.categorie !== categorie) return false;
-    if (localisation && c.localisation !== localisation) return false;
+    if (localisation && !listerLocalisationsComposant(c).includes(localisation)) return false;
     if (ligneCredit && c.ligneCredit !== ligneCredit) return false;
     if (disponibilite === "dispo" && (RESERVATIONS_ACTIVES.get(c.id) || 0) >= (c.quantite || 0)) return false;
     if (disponibilite === "emprunte" && (RESERVATIONS_ACTIVES.get(c.id) || 0) === 0) return false;
@@ -124,7 +166,9 @@ function appliquerFiltresEtAfficher() {
   if (groupement) {
     const groupes = {};
     resultats.forEach(c => {
-      const cle = c[groupement] || "Non renseigné";
+      const cle = groupement === "localisation"
+        ? localisationPrincipaleComposant(c)
+        : (c[groupement] || "Non renseigné");
       if (!groupes[cle]) groupes[cle] = [];
       groupes[cle].push(c);
     });
@@ -161,7 +205,7 @@ function rendreTableau(liste) {
         <td class="cell-ref">${escapeHtml(c.reference || "")}</td>
         <td>${escapeHtml(c.description || "")}</td>
         <td>${rendreBadgeCouleur(c.categorie, "categorie")}</td>
-        <td>${rendreBadgeCouleur(c.localisation, "localisation")}</td>
+        <td>${rendreBadgesLocalisationsComposant(c)}</td>
         <td>${(c.quantite || 0) <= 1 ? `<span class="qte-faible">${c.quantite || 0}</span>` : (c.quantite || 0)}</td>
         <td>${quantiteRestante <= 0 ? `<span class="qte-faible">${quantiteRestante}</span>` : quantiteRestante}</td>
         <td>${c.prix != null ? Number(c.prix).toFixed(2) + " €" : "—"}</td>
@@ -220,6 +264,18 @@ function rendreBadgeCouleur(libelle, type) {
   return `<span class="badge badge-couleur badge-${type}" style="${styleBadgeDepuisTexte(valeur, type)}">${escapeHtml(valeur)}</span>`;
 }
 
+function rendreBadgesLocalisationsComposant(composant) {
+  const repartition = normaliserRepartitionLocalisations(composant);
+
+  if (repartition.length === 0) {
+    return rendreBadgeCouleur(composant?.localisation, "localisation");
+  }
+
+  return `<div class="cell-localisations-multi">${repartition.map(item => `
+    <span>${rendreBadgeCouleur(item.localisation, "localisation")} <span class="texte-discret">(${item.quantite})</span></span>
+  `).join("")}</div>`;
+}
+
 function escapeCsv(valeur) {
   if (valeur == null) return "";
   const texte = String(valeur).replace(/\r?\n/g, " ");
@@ -245,7 +301,7 @@ function exporterCsv() {
       c.reference || "",
       c.description || "",
       c.categorie || "",
-      c.localisation || "",
+      formaterLocalisationsPourExport(c),
       c.quantite ?? "",
       quantiteRestante,
       c.prix ?? "",
@@ -403,6 +459,7 @@ document.getElementById("btn-enregistrer-composant").addEventListener("click", a
       description,
       categorie,
       localisation,
+      localisationsQuantites: quantite > 0 ? [{ localisation, quantite }] : [],
       quantite,
       prix: parseFloat(document.getElementById("f-prix").value) || null,
       numeroSerie: document.getElementById("f-numero-serie").value.trim(),
