@@ -344,4 +344,3 @@ function escapeAttr(str) { return escapeHtml(str); }
 await chargerComposants();
 await chargerMembres();
 await chargerReservations();
-}
