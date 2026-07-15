@@ -46,10 +46,15 @@
             <label>Catégorie *</label>
             <select id="edit-categorie" required></select>
           </div>
-          <div class="champ">
-            <label>Localisation</label>
-            <input type="text" id="edit-localisation" placeholder="Ex. Étagère A1">
+        </div>
+
+        <div class="champ">
+          <label>Répartition par localisation *</label>
+          <div id="edit-repartition-localisations" class="repartition-localisations-editor"></div>
+          <div style="margin-top:8px;">
+            <button type="button" class="btn btn-secondaire btn-sm" id="btn-ajouter-localisation">+ Ajouter une localisation</button>
           </div>
+          <span class="champ-aide" id="edit-repartition-aide">La somme des quantités doit être égale à la quantité totale.</span>
         </div>
 
         <div class="champ-ligne">
