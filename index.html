@@ -22,6 +22,9 @@
         <button class="btn btn-secondaire" id="btn-exporter-csv">
           ⬇ Exporter en CSV
         </button>
+        <button class="btn btn-secondaire" id="btn-transfert-localisation">
+          ⇄ Changer de localisation (multi)
+        </button>
         <button class="btn btn-primaire" id="btn-ajouter">
           + Ajouter un composant / outil
         </button>
@@ -74,6 +77,62 @@
       <div class="loader">Chargement de l'inventaire…</div>
     </div>
   </main>
+</div>
+
+<!-- ============ MODALE TRANSFERT MULTI-LOCALISATION ============ -->
+<div class="overlay" id="modale-transfert-localisation" hidden>
+  <div class="modale modale-large">
+    <div class="modale__header">
+      <h3>Transfert multi-localisation</h3>
+      <button class="modale__fermer" data-fermer-modale="modale-transfert-localisation">&times;</button>
+    </div>
+    <div class="modale__corps">
+      <form id="form-transfert-localisation">
+        <div class="champ-ligne">
+          <div class="champ">
+            <label>Nouvelle localisation (destination) *</label>
+            <select id="tm-destination" required>
+              <option value="">Sélectionner une localisation</option>
+            </select>
+          </div>
+          <div class="champ" id="tm-destination-autre-zone" hidden>
+            <label>Nouvelle localisation personnalisée *</label>
+            <input type="text" id="tm-destination-autre" placeholder="ex: Armoire B2, Atelier test…">
+          </div>
+        </div>
+
+        <div class="champ">
+          <label>Filtrer les composants à transférer</label>
+          <input type="text" id="tm-recherche" placeholder="Recherche par référence ou description…">
+        </div>
+
+        <p class="champ-aide" id="tm-aide-selection">Sélectionnez un ou plusieurs composants, puis indiquez la quantité à déplacer pour chacun.</p>
+
+        <div class="tableau-conteneur transfert-tableau-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>
+                  <input type="checkbox" id="tm-select-all" aria-label="Tout sélectionner">
+                </th>
+                <th>Référence</th>
+                <th>Description</th>
+                <th>Depuis</th>
+                <th>Qté à déplacer</th>
+                <th>Stock total</th>
+                <th>Répartition actuelle</th>
+              </tr>
+            </thead>
+            <tbody id="tm-lignes"></tbody>
+          </table>
+        </div>
+      </form>
+    </div>
+    <div class="modale__pied">
+      <button class="btn btn-secondaire" data-fermer-modale="modale-transfert-localisation">Annuler</button>
+      <button class="btn btn-primaire" id="btn-confirmer-transfert-localisation">Appliquer les transferts</button>
+    </div>
+  </div>
 </div>
 
 <!-- ============ MODALE AJOUT / ÉDITION COMPOSANT ============ -->
