@@ -14,7 +14,10 @@ injecterSidebar("inventaire");
 let TOUS_COMPOSANTS = [];
 let RESERVATIONS_ACTIVES = new Map(); // ids des composants et quantités empruntées actuellement
 let RESULTATS_AFFICHES = [];
+let LOCALISATIONS_DISPONIBLES = [];
 const VALEUR_GESTION_LOCALISATIONS = "__gestion_localisations__";
+const VALEUR_LOCALISATION_AUTRE = "__autre_localisation__";
+const TRANSFERT_ETAT = new Map();
 
 function normaliserRepartitionLocalisations(composant) {
   const repartition = Array.isArray(composant?.localisationsQuantites)
@@ -73,6 +76,8 @@ async function chargerReferentielsMenus(fallbackLocalisations = []) {
     chargerLibellesCollection(COLLECTIONS_REFERENTIELS.lignesCredit, LIGNES_CREDIT),
     chargerLibellesCollection(COLLECTIONS_REFERENTIELS.localisations, fallbackLocalisations)
   ]);
+
+  LOCALISATIONS_DISPONIBLES = [...localisations];
 
   remplirSelect(document.getElementById("f-categorie"), categories, false);
   remplirSelect(document.getElementById("f-ligne-credit"), lignesCredit, false);
@@ -327,6 +332,271 @@ function exporterCsv() {
   URL.revokeObjectURL(url);
 }
 
+function toutesLesLocalisationsConnues() {
+  const set = new Set((LOCALISATIONS_DISPONIBLES || []).filter(Boolean));
+  TOUS_COMPOSANTS.forEach(c => {
+    listerLocalisationsComposant(c).forEach(loc => {
+      if (loc) set.add(loc);
+    });
+  });
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+function repartitionVersMap(composant) {
+  const map = new Map();
+  normaliserRepartitionLocalisations(composant).forEach(item => {
+    map.set(item.localisation, item.quantite);
+  });
+  return map;
+}
+
+function quantiteDisponibleLocalisation(composant, localisation) {
+  if (!localisation) return 0;
+  return repartitionVersMap(composant).get(localisation) || 0;
+}
+
+function initialiserEtatTransfert() {
+  TRANSFERT_ETAT.clear();
+  TOUS_COMPOSANTS.forEach(composant => {
+    const repartition = normaliserRepartitionLocalisations(composant);
+    const depuis = repartition[0]?.localisation || "";
+    TRANSFERT_ETAT.set(composant.id, {
+      selectionne: false,
+      depuis,
+      quantite: depuis ? 1 : 0
+    });
+  });
+}
+
+function remplirSelectDestinationTransfert() {
+  const select = document.getElementById("tm-destination");
+  if (!select) return;
+
+  const options = toutesLesLocalisationsConnues().map(loc => `<option value="${escapeAttr(loc)}">${escapeHtml(loc)}</option>`);
+  select.innerHTML = [
+    `<option value="">Sélectionner une localisation</option>`,
+    ...options,
+    `<option value="${VALEUR_LOCALISATION_AUTRE}">Autre (saisie manuelle)…</option>`
+  ].join("");
+}
+
+function destinationTransfertCourante() {
+  const select = document.getElementById("tm-destination");
+  if (!select) return "";
+  if (select.value !== VALEUR_LOCALISATION_AUTRE) return String(select.value || "").trim();
+  return String(document.getElementById("tm-destination-autre")?.value || "").trim();
+}
+
+function mettreAJourVisibiliteDestinationAutre() {
+  const select = document.getElementById("tm-destination");
+  const zone = document.getElementById("tm-destination-autre-zone");
+  if (!select || !zone) return;
+  zone.hidden = select.value !== VALEUR_LOCALISATION_AUTRE;
+}
+
+function rendreRepartitionTransfert(composant) {
+  const repartition = normaliserRepartitionLocalisations(composant);
+  if (repartition.length === 0) return "<span class=\"texte-discret\">Aucune localisation</span>";
+  return `<div class="transfert-repartition">${repartition.map(item => `${rendreBadgeCouleur(item.localisation, "localisation")} <span class="texte-discret">(${item.quantite})</span>`).join("")}</div>`;
+}
+
+function rendreLignesTransfert() {
+  const tbody = document.getElementById("tm-lignes");
+  if (!tbody) return;
+
+  const recherche = String(document.getElementById("tm-recherche")?.value || "").toLowerCase().trim();
+  const composants = TOUS_COMPOSANTS.filter(c => {
+    if (!recherche) return true;
+    const cible = `${c.reference || ""} ${c.description || ""}`.toLowerCase();
+    return cible.includes(recherche);
+  });
+
+  if (composants.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="texte-discret">Aucun composant trouvé avec ce filtre.</td></tr>`;
+    mettreAJourAideTransfert();
+    mettreAJourSelectAllTransfert();
+    return;
+  }
+
+  tbody.innerHTML = composants.map(composant => {
+    const etat = TRANSFERT_ETAT.get(composant.id) || { selectionne: false, depuis: "", quantite: 0 };
+    const localisations = listerLocalisationsComposant(composant);
+    const optionsDepuis = [
+      `<option value="">Sélectionner</option>`,
+      ...localisations.map(loc => `<option value="${escapeAttr(loc)}"${loc === etat.depuis ? " selected" : ""}>${escapeHtml(loc)}</option>`)
+    ].join("");
+
+    const qteDisponible = quantiteDisponibleLocalisation(composant, etat.depuis);
+    const valeurQte = etat.quantite > 0 ? etat.quantite : (qteDisponible > 0 ? 1 : 0);
+    const qteInvalide = etat.selectionne && (!etat.depuis || valeurQte < 1 || valeurQte > qteDisponible);
+    const classeLigne = qteInvalide ? ' class="transfert-aide-erreur"' : "";
+
+    return `
+      <tr data-tm-id="${escapeAttr(composant.id)}"${classeLigne}>
+        <td>
+          <input type="checkbox" data-tm-select ${etat.selectionne ? "checked" : ""}>
+        </td>
+        <td class="cell-ref">${escapeHtml(composant.reference || "")}</td>
+        <td>${escapeHtml(composant.description || "")}</td>
+        <td>
+          <select data-tm-depuis class="transfert-loc-select" ${localisations.length === 0 ? "disabled" : ""}>
+            ${optionsDepuis}
+          </select>
+        </td>
+        <td>
+          <input type="number" data-tm-qte class="transfert-qte-input" min="1" value="${valeurQte}" ${qteDisponible > 0 ? `max="${qteDisponible}"` : "disabled"}>
+          <div class="texte-discret">Max: ${qteDisponible}</div>
+        </td>
+        <td>${composant.quantite || 0}</td>
+        <td>${rendreRepartitionTransfert(composant)}</td>
+      </tr>
+    `;
+  }).join("");
+
+  mettreAJourAideTransfert();
+  mettreAJourSelectAllTransfert();
+}
+
+function mettreAJourSelectAllTransfert() {
+  const selectAll = document.getElementById("tm-select-all");
+  if (!selectAll) return;
+
+  const idsVisibles = Array.from(document.querySelectorAll("#tm-lignes tr[data-tm-id]")).map(tr => tr.dataset.tmId);
+  if (idsVisibles.length === 0) {
+    selectAll.checked = false;
+    selectAll.indeterminate = false;
+    return;
+  }
+
+  const nbSelectionnes = idsVisibles.filter(id => TRANSFERT_ETAT.get(id)?.selectionne).length;
+  selectAll.checked = nbSelectionnes === idsVisibles.length;
+  selectAll.indeterminate = nbSelectionnes > 0 && nbSelectionnes < idsVisibles.length;
+}
+
+function mettreAJourAideTransfert() {
+  const aide = document.getElementById("tm-aide-selection");
+  if (!aide) return;
+
+  const destination = destinationTransfertCourante();
+  const selectionnes = TOUS_COMPOSANTS.filter(c => TRANSFERT_ETAT.get(c.id)?.selectionne);
+
+  if (selectionnes.length === 0) {
+    aide.className = "champ-aide";
+    aide.textContent = "Sélectionnez au moins un composant à transférer.";
+    return;
+  }
+
+  const erreurs = [];
+  selectionnes.forEach(c => {
+    const etat = TRANSFERT_ETAT.get(c.id);
+    const qte = parseInt(etat?.quantite, 10) || 0;
+    const depuis = String(etat?.depuis || "").trim();
+    const qteDispo = quantiteDisponibleLocalisation(c, depuis);
+    if (!depuis) erreurs.push(`${c.reference || c.id}: localisation source manquante.`);
+    else if (qte < 1 || qte > qteDispo) erreurs.push(`${c.reference || c.id}: quantité invalide (max ${qteDispo}).`);
+    if (destination && depuis && destination === depuis) erreurs.push(`${c.reference || c.id}: source et destination identiques.`);
+  });
+
+  if (!destination) {
+    aide.className = "champ-aide transfert-aide-erreur";
+    aide.textContent = `Destination manquante. ${selectionnes.length} composant(s) sélectionné(s).`;
+    return;
+  }
+
+  if (erreurs.length > 0) {
+    aide.className = "champ-aide transfert-aide-erreur";
+    aide.textContent = `Corriger ${erreurs.length} erreur(s) avant de confirmer.`;
+    return;
+  }
+
+  aide.className = "champ-aide transfert-aide-ok";
+  aide.textContent = `${selectionnes.length} composant(s) prêt(s) à être transféré(s) vers "${destination}".`;
+}
+
+function ouvrirModaleTransfert() {
+  initialiserEtatTransfert();
+  remplirSelectDestinationTransfert();
+  const champRecherche = document.getElementById("tm-recherche");
+  if (champRecherche) champRecherche.value = "";
+  document.getElementById("tm-destination")?.focus();
+  mettreAJourVisibiliteDestinationAutre();
+  rendreLignesTransfert();
+  document.getElementById("modale-transfert-localisation").hidden = false;
+}
+
+async function confirmerTransfertMultiLocalisation() {
+  const destination = destinationTransfertCourante();
+  if (!destination) {
+    alert("Merci de sélectionner une localisation de destination.");
+    return;
+  }
+
+  const cibles = TOUS_COMPOSANTS
+    .map(c => ({ composant: c, etat: TRANSFERT_ETAT.get(c.id) || {} }))
+    .filter(item => item.etat.selectionne);
+
+  if (cibles.length === 0) {
+    alert("Sélectionnez au moins un composant.");
+    return;
+  }
+
+  const misesAJour = [];
+  for (const { composant, etat } of cibles) {
+    const depuis = String(etat.depuis || "").trim();
+    const quantite = parseInt(etat.quantite, 10) || 0;
+
+    if (!depuis) {
+      alert(`Localisation source manquante pour ${composant.reference || composant.id}.`);
+      return;
+    }
+    if (depuis === destination) {
+      alert(`Source et destination identiques pour ${composant.reference || composant.id}.`);
+      return;
+    }
+
+    const map = repartitionVersMap(composant);
+    const disponible = map.get(depuis) || 0;
+    if (quantite < 1 || quantite > disponible) {
+      alert(`Quantité invalide pour ${composant.reference || composant.id}. Maximum autorisé: ${disponible}.`);
+      return;
+    }
+
+    const resteSource = disponible - quantite;
+    if (resteSource > 0) map.set(depuis, resteSource);
+    else map.delete(depuis);
+    map.set(destination, (map.get(destination) || 0) + quantite);
+
+    const localisationsQuantites = Array.from(map.entries())
+      .map(([localisation, qte]) => ({ localisation, quantite: qte }))
+      .sort((a, b) => (b.quantite - a.quantite) || a.localisation.localeCompare(b.localisation));
+
+    misesAJour.push({
+      id: composant.id,
+      donnees: {
+        localisation: localisationsQuantites[0]?.localisation || "",
+        localisationsQuantites
+      }
+    });
+  }
+
+  const btn = document.getElementById("btn-confirmer-transfert-localisation");
+  btn.disabled = true;
+  btn.textContent = "Transfert en cours…";
+
+  try {
+    await Promise.all(misesAJour.map(item => updateDoc(doc(db, "composants", item.id), item.donnees)));
+    document.getElementById("modale-transfert-localisation").hidden = true;
+    await chargerComposants();
+    alert(`${misesAJour.length} composant(s) transféré(s) vers "${destination}".`);
+  } catch (err) {
+    console.error(err);
+    alert("Erreur lors du transfert: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Appliquer les transferts";
+  }
+}
+
 // ---- Upload image via Issue + Action ----
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -415,8 +685,10 @@ document.getElementById("f-localisation").addEventListener("change", event => {
 // Modale ajout / édition
 // ----------------------------------------------------------
 const modale = document.getElementById("modale-composant");
+const modaleTransfert = document.getElementById("modale-transfert-localisation");
 
 document.getElementById("btn-exporter-csv").addEventListener("click", exporterCsv);
+document.getElementById("btn-transfert-localisation").addEventListener("click", ouvrirModaleTransfert);
 
 document.getElementById("btn-ajouter").addEventListener("click", () => {
   document.getElementById("modale-composant-titre").textContent = "Ajouter un composant / outil";
@@ -428,6 +700,71 @@ document.getElementById("btn-ajouter").addEventListener("click", () => {
 document.querySelectorAll('[data-fermer-modale="modale-composant"]').forEach(btn => {
   btn.addEventListener("click", () => { modale.hidden = true; });
 });
+
+document.querySelectorAll('[data-fermer-modale="modale-transfert-localisation"]').forEach(btn => {
+  btn.addEventListener("click", () => { modaleTransfert.hidden = true; });
+});
+
+document.getElementById("tm-destination")?.addEventListener("change", () => {
+  mettreAJourVisibiliteDestinationAutre();
+  mettreAJourAideTransfert();
+});
+
+document.getElementById("tm-destination-autre")?.addEventListener("input", mettreAJourAideTransfert);
+document.getElementById("tm-recherche")?.addEventListener("input", rendreLignesTransfert);
+
+document.getElementById("tm-select-all")?.addEventListener("change", e => {
+  const coche = Boolean(e.target.checked);
+  document.querySelectorAll("#tm-lignes tr[data-tm-id]").forEach(tr => {
+    const id = tr.dataset.tmId;
+    const etat = TRANSFERT_ETAT.get(id);
+    if (!etat) return;
+    etat.selectionne = coche;
+    TRANSFERT_ETAT.set(id, etat);
+  });
+  rendreLignesTransfert();
+});
+
+document.getElementById("tm-lignes")?.addEventListener("change", e => {
+  const tr = e.target.closest("tr[data-tm-id]");
+  if (!tr) return;
+  const id = tr.dataset.tmId;
+  const composant = TOUS_COMPOSANTS.find(c => c.id === id);
+  if (!composant) return;
+
+  const etat = TRANSFERT_ETAT.get(id) || { selectionne: false, depuis: "", quantite: 0 };
+
+  if (e.target.matches("[data-tm-select]")) {
+    etat.selectionne = Boolean(e.target.checked);
+  }
+
+  if (e.target.matches("[data-tm-depuis]")) {
+    etat.depuis = e.target.value;
+    const max = quantiteDisponibleLocalisation(composant, etat.depuis);
+    etat.quantite = max > 0 ? Math.min(Math.max(parseInt(etat.quantite, 10) || 1, 1), max) : 0;
+  }
+
+  TRANSFERT_ETAT.set(id, etat);
+  rendreLignesTransfert();
+});
+
+document.getElementById("tm-lignes")?.addEventListener("input", e => {
+  if (!e.target.matches("[data-tm-qte]")) return;
+  const tr = e.target.closest("tr[data-tm-id]");
+  if (!tr) return;
+  const id = tr.dataset.tmId;
+  const composant = TOUS_COMPOSANTS.find(c => c.id === id);
+  if (!composant) return;
+  const etat = TRANSFERT_ETAT.get(id) || { selectionne: false, depuis: "", quantite: 0 };
+  const max = quantiteDisponibleLocalisation(composant, etat.depuis);
+  const qte = parseInt(e.target.value, 10) || 0;
+  etat.quantite = max > 0 ? Math.min(Math.max(qte, 1), max) : 0;
+  TRANSFERT_ETAT.set(id, etat);
+  mettreAJourAideTransfert();
+  mettreAJourSelectAllTransfert();
+});
+
+document.getElementById("btn-confirmer-transfert-localisation")?.addEventListener("click", confirmerTransfertMultiLocalisation);
 
 document.getElementById("btn-enregistrer-composant").addEventListener("click", async () => {
   const reference = document.getElementById("f-reference").value.trim();
