@@ -439,6 +439,10 @@ tbody td { padding: 11px 14px; font-size: 13px; vertical-align: middle; }
   box-shadow: 0 20px 50px rgba(15,41,66,0.25);
 }
 
+.modale-large {
+  max-width: 980px;
+}
+
 .modale__header {
   padding: 18px 24px;
   border-bottom: 1px solid var(--gris-200);
@@ -501,6 +505,49 @@ textarea { resize: vertical; min-height: 70px; font-family: var(--font-ui); }
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.transfert-tableau-wrap {
+  max-height: 420px;
+  overflow: auto;
+  border-radius: 8px;
+}
+
+.transfert-tableau-wrap table {
+  min-width: 840px;
+}
+
+.transfert-tableau-wrap tbody tr {
+  cursor: default;
+}
+
+.transfert-tableau-wrap tbody tr:hover {
+  background: #f7fafc;
+}
+
+.transfert-loc-select,
+.transfert-qte-input {
+  min-width: 110px;
+}
+
+.transfert-qte-input {
+  width: 120px;
+}
+
+.transfert-repartition {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.transfert-aide-erreur {
+  color: var(--alerte);
+  font-weight: 600;
+}
+
+.transfert-aide-ok {
+  color: var(--succes);
+  font-weight: 600;
 }
 
 /* ============================================================
@@ -619,4 +666,5 @@ textarea { resize: vertical; min-height: 70px; font-family: var(--font-ui); }
   .fiche-produit { grid-template-columns: 1fr; }
   .grille-attributs { grid-template-columns: 1fr; }
   .repartition-ligne { grid-template-columns: 1fr; }
+  .modale-large { max-width: 100%; }
 }
