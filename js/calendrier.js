@@ -1,7 +1,7 @@
 // ============================================================
 // CALENDRIER.JS — Vue mensuelle des réservations
 // ============================================================
-import { db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from "./firebase-config.js";
+import { db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, deleteField } from "./firebase-config.js";
 import { injecterSidebar, formaterDate } from "./sidebar.js";
 
 injecterSidebar("calendrier");
@@ -19,6 +19,136 @@ let MEMBRES = [];
 let dateSelectionnee = null;
 let RESERVATION_A_EDITER = null;
 let COMPOSANTS_PAR_LIBELLE = new Map();
+
+function localiserReservation(reservation) {
+  return String(reservation?.localisation || "").trim();
+}
+
+function normaliserRepartitionLocalisations(composant) {
+  const repartition = Array.isArray(composant?.localisationsQuantites)
+    ? composant.localisationsQuantites
+    : [];
+
+  const map = new Map();
+  repartition.forEach(item => {
+    const localisation = String(item?.localisation || "").trim();
+    const quantite = parseInt(item?.quantite, 10);
+    if (!localisation || isNaN(quantite) || quantite < 1) return;
+    map.set(localisation, (map.get(localisation) || 0) + quantite);
+  });
+
+  if (map.size === 0) {
+    const quantiteFallback = parseInt(composant?.quantite, 10) || 0;
+    const localisationFallback = String(composant?.localisation || "Stock principal").trim();
+    if (quantiteFallback > 0 && localisationFallback) {
+      map.set(localisationFallback, quantiteFallback);
+    }
+  }
+
+  return Array.from(map.entries())
+    .map(([localisation, quantite]) => ({ localisation, quantite }))
+    .sort((a, b) => (b.quantite - a.quantite) || a.localisation.localeCompare(b.localisation));
+}
+
+function calculerDisponibilitesParLocalisation(composantId, dateDebut, dateFinCompare, reservationId = "") {
+  const composant = COMPOSANTS.find(c => c.id === composantId);
+  const repartition = normaliserRepartitionLocalisations(composant);
+
+  const totalParLocalisation = new Map(repartition.map(item => [item.localisation, item.quantite]));
+  const reserveParLocalisation = new Map(repartition.map(item => [item.localisation, 0]));
+
+  let reserveSansLocalisation = 0;
+  TOUTES_RESERVATIONS
+    .filter(r => r.id !== reservationId)
+    .filter(r => r.composantId === composantId)
+    .filter(r => {
+      const finExistante = getDateFinReservation(r) || "9999-12-31";
+      return r.dateDebut <= dateFinCompare && finExistante >= dateDebut;
+    })
+    .forEach(r => {
+      const q = parseInt(r.quantite, 10) || 1;
+      const localisation = localiserReservation(r);
+      if (localisation && reserveParLocalisation.has(localisation)) {
+        reserveParLocalisation.set(localisation, (reserveParLocalisation.get(localisation) || 0) + q);
+      } else {
+        reserveSansLocalisation += q;
+      }
+    });
+
+  if (reserveSansLocalisation > 0 && repartition.length > 0) {
+    const localisationPrincipale = repartition[0].localisation;
+    reserveParLocalisation.set(
+      localisationPrincipale,
+      (reserveParLocalisation.get(localisationPrincipale) || 0) + reserveSansLocalisation
+    );
+  }
+
+  const disponibilites = new Map();
+  totalParLocalisation.forEach((total, localisation) => {
+    disponibilites.set(localisation, Math.max(0, total - (reserveParLocalisation.get(localisation) || 0)));
+  });
+
+  return { disponibilites, totalParLocalisation };
+}
+
+function rafraichirSelectLocalisationReservation(reservation = null) {
+  const select = document.getElementById("r-localisation");
+  const aide = document.getElementById("r-localisation-aide");
+  if (!select) return;
+
+  const composantId = document.getElementById("r-composant")?.value || reservation?.composantId || "";
+  const dateDebut = document.getElementById("r-date-debut")?.value || new Date().toISOString().split("T")[0];
+  const dateFinSaisi = document.getElementById("r-date-fin")?.value || "";
+  const dureeJours = parseInt(document.getElementById("r-duree")?.value, 10) || 1;
+  const dateFinCompare = dateFinSaisi || getDateFinReservation({ dateDebut, dureeJours, dateFin: dateFinSaisi }) || "9999-12-31";
+  const reservationId = reservation?.id || RESERVATION_A_EDITER?.id || "";
+  const localisationEditee = localiserReservation(reservation || RESERVATION_A_EDITER);
+
+  if (!composantId) {
+    select.innerHTML = `<option value="">Sélectionnez d'abord un composant</option>`;
+    select.disabled = true;
+    if (aide) aide.textContent = "Choisis d'abord le composant pour voir les localisations.";
+    return;
+  }
+
+  const { disponibilites, totalParLocalisation } = calculerDisponibilitesParLocalisation(composantId, dateDebut, dateFinCompare, reservationId);
+  const localisations = Array.from(totalParLocalisation.keys());
+  const localisationsPrenables = localisations.filter(localisation => {
+    const dispo = disponibilites.get(localisation) || 0;
+    return dispo > 0 || localisation === localisationEditee;
+  });
+
+  if (localisationsPrenables.length === 0) {
+    select.innerHTML = `<option value="">Aucune localisation disponible</option>`;
+    select.disabled = true;
+    if (aide) aide.textContent = "Aucune localisation n'a de stock disponible sur la période choisie.";
+    return;
+  }
+
+  let options = `<option value="">— Sélectionner —</option>`;
+  options += localisationsPrenables.map(localisation => {
+    const dispo = disponibilites.get(localisation) || 0;
+    const total = totalParLocalisation.get(localisation) || 0;
+    return `<option value="${escapeAttr(localisation)}">${escapeHtml(localisation)} (${dispo} dispo / ${total})</option>`;
+  }).join("");
+
+  if (localisationEditee && !totalParLocalisation.has(localisationEditee)) {
+    options += `<option value="${escapeAttr(localisationEditee)}">${escapeHtml(localisationEditee)} (hors répartition actuelle)</option>`;
+  }
+
+  select.innerHTML = options;
+  select.disabled = false;
+
+  if (localisationEditee) {
+    select.value = localisationEditee;
+  } else if (localisationsPrenables.length === 1) {
+    select.value = localisationsPrenables[0];
+  }
+
+  if (aide) {
+    aide.textContent = "Choisis la localisation depuis laquelle le composant est prélevé.";
+  }
+}
 
 function normaliserTexteRecherche(valeur) {
   return String(valeur || "").trim().toLowerCase();
@@ -124,6 +254,7 @@ async function ajouterMembreDepuisReservation() {
 }
 
 function getDateFinReservation(r) {
+  if (!r?.dateDebut) return "";
   if (r.dateFin) return r.dateFin;
   const duree = parseInt(r.dureeJours, 10) || 1;
   const dateDebut = new Date(`${r.dateDebut}T00:00:00`);
@@ -132,7 +263,16 @@ function getDateFinReservation(r) {
 }
 
 function reservationEstDansPeriode(r, dateStr) {
-  return r.dateDebut <= dateStr && getDateFinReservation(r) >= dateStr;
+  if (!r?.dateDebut || !dateStr) return false;
+  const dateFin = getDateFinReservation(r);
+  if (!dateFin) return false;
+  return r.dateDebut <= dateStr && dateFin >= dateStr;
+}
+
+function referenceReservation(r) {
+  if (r?.composantReference) return r.composantReference;
+  const composant = COMPOSANTS.find(c => c.id === r?.composantId);
+  return composant?.reference || "Composant sans référence";
 }
 
 function rendreCalendrier() {
@@ -175,8 +315,8 @@ function rendreCalendrier() {
     const estAujourdhui = c.dateStr === aujourdhuiStr;
     const resasDuJour = TOUTES_RESERVATIONS.filter(r => reservationEstDansPeriode(r, c.dateStr));
     const evenementsHtml = resasDuJour.slice(0, 3).map(r =>
-      `<div class="evenement-resa" data-resa-id="${r.id}" title="${escapeAttr(r.composantReference)} — ${escapeAttr(r.personne)}">
-        <div>${escapeHtml(r.composantReference)}</div>
+      `<div class="evenement-resa" data-resa-id="${r.id}" title="${escapeAttr(referenceReservation(r))} — ${escapeAttr(r.personne || "")}">
+        <div>${escapeHtml(referenceReservation(r))}</div>
         <div class="evenement-resa__personne">${escapeHtml(r.personne)}</div>
       </div>`
     ).join("");
@@ -229,9 +369,9 @@ function ouvrirDetailJour(dateStr) {
         <div class="ligne-historique" style="grid-template-columns:1fr auto auto;gap:12px;align-items:center;">
           <div>
             <div class="ligne-historique__produit">
-              <a href="produit.html?id=${r.composantId}">${escapeHtml(r.composantReference)}</a>
+              <a href="produit.html?id=${r.composantId}">${escapeHtml(referenceReservation(r))}</a>
             </div>
-            <div class="ligne-historique__meta">${escapeHtml(r.personne)} ${r.projet ? "· " + escapeHtml(r.projet) : ""}</div>
+            <div class="ligne-historique__meta">${escapeHtml(r.personne)} ${r.projet ? "· " + escapeHtml(r.projet) : ""}${r.localisation ? " · " + escapeHtml(r.localisation) : ""}</div>
           </div>
           <div class="ligne-historique__dates">${formaterDate(r.dateDebut)} &rarr; ${formaterDate(getDateFinReservation(r))}</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
@@ -266,7 +406,7 @@ function ouvrirModaleReservation(reservation = null) {
   const aujourdHui = new Date().toISOString().split("T")[0];
   definirComposantSelectionneParId(reservation?.composantId || "");
   document.getElementById("r-date-debut").value = reservation?.dateDebut || dateSelectionnee || aujourdHui;
-  document.getElementById("r-date-fin").value = reservation?.dateFin || "";
+  document.getElementById("r-date-fin").value = reservation ? (getDateFinReservation(reservation) || "") : "";
   document.getElementById("r-duree").value = reservation?.dureeJours || "1";
   document.getElementById("r-quantite").value = reservation?.quantite || "1";
   const selectPersonne = document.getElementById("r-personne");
@@ -280,6 +420,7 @@ function ouvrirModaleReservation(reservation = null) {
   }
   document.getElementById("r-projet").value = reservation?.projet || "";
   document.getElementById("r-commentaire").value = reservation?.commentaire || "";
+  rafraichirSelectLocalisationReservation(reservation);
   document.querySelector("#modale-reservation .modale__header h3").textContent = reservation ? "Modifier une réservation" : "Créer une réservation";
   document.getElementById("btn-confirmer-reservation").textContent = reservation ? "Enregistrer les modifications" : "Enregistrer la réservation";
   document.getElementById("modale-reservation").hidden = false;
@@ -302,6 +443,15 @@ document.querySelectorAll("[data-ajouter-membre]").forEach(btn => {
 
 document.getElementById("r-composant-recherche")?.addEventListener("change", synchroniserComposantSelectionneDepuisRecherche);
 document.getElementById("r-composant-recherche")?.addEventListener("blur", synchroniserComposantSelectionneDepuisRecherche);
+document.getElementById("r-composant-recherche")?.addEventListener("input", () => {
+  synchroniserComposantSelectionneDepuisRecherche();
+  rafraichirSelectLocalisationReservation(RESERVATION_A_EDITER);
+});
+document.getElementById("r-composant-recherche")?.addEventListener("change", () => rafraichirSelectLocalisationReservation(RESERVATION_A_EDITER));
+document.getElementById("r-composant-recherche")?.addEventListener("blur", () => rafraichirSelectLocalisationReservation(RESERVATION_A_EDITER));
+document.getElementById("r-date-debut")?.addEventListener("change", () => rafraichirSelectLocalisationReservation(RESERVATION_A_EDITER));
+document.getElementById("r-date-fin")?.addEventListener("change", () => rafraichirSelectLocalisationReservation(RESERVATION_A_EDITER));
+document.getElementById("r-duree")?.addEventListener("input", () => rafraichirSelectLocalisationReservation(RESERVATION_A_EDITER));
 
 document.getElementById("btn-nouvelle-reservation")?.addEventListener("click", ouvrirModaleReservation);
 
@@ -311,6 +461,7 @@ document.getElementById("btn-confirmer-reservation").addEventListener("click", a
   const dateFin = document.getElementById("r-date-fin").value;
   const dureeJours = parseInt(document.getElementById("r-duree").value, 10);
   const quantite = parseInt(document.getElementById("r-quantite").value, 10);
+  const localisation = (document.getElementById("r-localisation")?.value || "").trim();
   const personne = document.getElementById("r-personne").value.trim();
   const projet = document.getElementById("r-projet").value.trim();
   const commentaire = document.getElementById("r-commentaire").value.trim();
@@ -327,6 +478,12 @@ document.getElementById("btn-confirmer-reservation").addEventListener("click", a
     return;
   }
 
+  const selectLocalisation = document.getElementById("r-localisation");
+  if (selectLocalisation && !selectLocalisation.disabled && !localisation) {
+    alert("Merci de sélectionner la localisation de prélèvement.");
+    return;
+  }
+
   const composant = COMPOSANTS.find(c => c.id === composantId);
   if (!composant) {
     alert("Le composant sélectionné est introuvable.");
@@ -338,6 +495,15 @@ document.getElementById("btn-confirmer-reservation").addEventListener("click", a
   }
 
   const dateFinCompare = dateFin || getDateFinReservation({ dateDebut, dureeJours, dateFin });
+  if (selectLocalisation && !selectLocalisation.disabled) {
+    const { disponibilites } = calculerDisponibilitesParLocalisation(composantId, dateDebut, dateFinCompare, reservationId);
+    const quantiteDisponibleLocalisation = disponibilites.get(localisation) || 0;
+    if (quantite > quantiteDisponibleLocalisation) {
+      alert(`La localisation \"${localisation}\" ne dispose que de ${quantiteDisponibleLocalisation} unité(s) sur la période demandée.`);
+      return;
+    }
+  }
+
   const quantiteReserveeDansPeriode = TOUTES_RESERVATIONS
     .filter(r => r.id !== reservationId)
     .filter(r => r.composantId === composantId)
@@ -354,11 +520,11 @@ document.getElementById("btn-confirmer-reservation").addEventListener("click", a
   btn.textContent = "Enregistrement…";
 
   try {
-    const donnees = {
+    const donneesBase = {
       composantId,
       composantReference: composant?.reference || "",
+      localisation,
       dateDebut,
-      ...(dateFin ? { dateFin } : {}),
       dureeJours,
       quantite,
       personne,
@@ -367,9 +533,15 @@ document.getElementById("btn-confirmer-reservation").addEventListener("click", a
     };
 
     if (estEdition) {
-      await updateDoc(doc(db, "reservations", reservationId), donnees);
+      await updateDoc(doc(db, "reservations", reservationId), {
+        ...donneesBase,
+        ...(dateFin ? { dateFin } : { dateFin: deleteField() })
+      });
     } else {
-      await addDoc(collection(db, "reservations"), donnees);
+      await addDoc(collection(db, "reservations"), {
+        ...donneesBase,
+        ...(dateFin ? { dateFin } : {})
+      });
     }
 
     RESERVATION_A_EDITER = null;
