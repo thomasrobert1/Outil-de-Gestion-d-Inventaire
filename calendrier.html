@@ -83,6 +83,13 @@
           <input type="number" id="r-quantite" min="1" value="1" required>
         </div>
         <div class="champ">
+          <label>Localisation de prélèvement *</label>
+          <select id="r-localisation" required>
+            <option value="">— Sélectionner —</option>
+          </select>
+          <small class="texte-discret" id="r-localisation-aide">Choisis la localisation depuis laquelle le composant est prélevé.</small>
+        </div>
+        <div class="champ">
           <label>Nom et prénom *</label>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <select id="r-personne" required style="flex:1;min-width:220px;">
