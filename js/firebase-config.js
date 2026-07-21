@@ -36,7 +36,8 @@ import {
   where,
   orderBy,
   onSnapshot,
-  serverTimestamp
+  serverTimestamp,
+  deleteField
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import {
   getStorage,
@@ -49,30 +50,10 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-// ------------------------------------------------------------
-// Configuration optionnelle GitHub pour stocker les photos
-// ------------------------------------------------------------
-// Renseigne ces valeurs pour enregistrer les photos dans un repo GitHub.
-// IMPORTANT: ce token donne un accès en écriture au dépôt ciblé.
-const GITHUB_OWNER = "thomasrobert1";
-const GITHUB_REPO = "Outil-de-Gestion-d-Inventaire";
-const GITHUB_BRANCH = "main";
-const GITHUB_MEDIA_FOLDER = "media/composants";
-const GITHUB_TOKEN = "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";
-
-const GITHUB_MEDIA_CONFIG = Object.freeze({
-  owner: GITHUB_OWNER.trim(),
-  repo: GITHUB_REPO.trim(),
-  branch: (GITHUB_BRANCH || "main").trim(),
-  folder: GITHUB_MEDIA_FOLDER.replace(/^\/+|\/+$/g, ""),
-  token: GITHUB_TOKEN.trim()
-});
-
 const STORAGE_BUCKETS_CANDIDATS = [
   firebaseConfig.storageBucket,
   `${firebaseConfig.projectId}.appspot.com`
 ].filter(Boolean);
-let GITHUB_FICHIER_ACCUEIL_INITIALISE = false;
 
 function nomFichierSecurise(nom) {
   return String(nom || "image")
@@ -80,113 +61,6 @@ function nomFichierSecurise(nom) {
     .replace(/[^a-zA-Z0-9._-]/g, "_")
     .replace(/_+/g, "_")
     .slice(-120);
-}
-
-function githubMediaConfigure() {
-  return Boolean(
-    GITHUB_MEDIA_CONFIG.owner &&
-    GITHUB_MEDIA_CONFIG.repo &&
-    GITHUB_MEDIA_CONFIG.branch &&
-    GITHUB_MEDIA_CONFIG.folder &&
-    GITHUB_MEDIA_CONFIG.token
-  );
-}
-
-function lireFichierEnBase64(fichier) {
-  return new Promise((resolve, reject) => {
-    const lecteur = new FileReader();
-    lecteur.onload = () => {
-      const resultat = String(lecteur.result || "");
-      const base64 = resultat.includes(",") ? resultat.split(",")[1] : "";
-      resolve(base64);
-    };
-    lecteur.onerror = () => reject(new Error("Impossible de lire le fichier image."));
-    lecteur.readAsDataURL(fichier);
-  });
-}
-
-async function televerserImageSurGitHub(fichier, nomFichier) {
-  const { owner, repo, branch, folder, token } = GITHUB_MEDIA_CONFIG;
-  await initialiserFichierAccueilGitHub(owner, repo, branch, folder, token);
-  const chemin = `${folder}/${nomFichier}`;
-  const contenuBase64 = await lireFichierEnBase64(fichier);
-
-  const reponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(chemin).replace(/%2F/g, "/")}`, {
-    method: "PUT",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Accept": "application/vnd.github+json",
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      message: `chore: add composant image ${nomFichier}`,
-      content: contenuBase64,
-      branch
-    })
-  });
-
-  if (!reponse.ok) {
-    const texte = await reponse.text();
-    throw new Error(`Upload GitHub refusé (${reponse.status}): ${texte || "erreur inconnue"}`);
-  }
-
-  const data = await reponse.json();
-  const downloadUrl = data?.content?.download_url;
-  return downloadUrl || `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${chemin}`;
-}
-
-async function initialiserFichierAccueilGitHub(owner, repo, branch, folder, token) {
-  if (GITHUB_FICHIER_ACCUEIL_INITIALISE) return;
-
-  const cheminAccueil = `${folder}/README.md`;
-  const urlContenu = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(cheminAccueil).replace(/%2F/g, "/")}?ref=${encodeURIComponent(branch)}`;
-
-  const verifier = await fetch(urlContenu, {
-    method: "GET",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Accept": "application/vnd.github+json"
-    }
-  });
-
-  if (verifier.ok) {
-    GITHUB_FICHIER_ACCUEIL_INITIALISE = true;
-    return;
-  }
-
-  if (verifier.status !== 404) {
-    const texte = await verifier.text();
-    throw new Error(`Vérification du dossier GitHub impossible (${verifier.status}): ${texte || "erreur inconnue"}`);
-  }
-
-  const contenuAccueil = [
-    "# Dossier médias composants",
-    "",
-    "Ce dossier est créé automatiquement au premier téléversement depuis l'application d'inventaire.",
-    "Les images des composants sont stockées ici."
-  ].join("\n");
-  const contenuBase64 = btoa(unescape(encodeURIComponent(contenuAccueil)));
-
-  const creation = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(cheminAccueil).replace(/%2F/g, "/")}`, {
-    method: "PUT",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Accept": "application/vnd.github+json",
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      message: "chore: initialize media folder",
-      content: contenuBase64,
-      branch
-    })
-  });
-
-  if (!creation.ok) {
-    const texte = await creation.text();
-    throw new Error(`Création du fichier d'accueil GitHub refusée (${creation.status}): ${texte || "erreur inconnue"}`);
-  }
-
-  GITHUB_FICHIER_ACCUEIL_INITIALISE = true;
 }
 
 function lireFichierEnDataUrl(fichier) {
@@ -242,14 +116,6 @@ export async function televerserImage(fichier, dossier = "images") {
 
   const nom = `${Date.now()}_${nomFichierSecurise(fichier.name)}`;
   let derniereErreur = null;
-
-  if (githubMediaConfigure()) {
-    try {
-      return await televerserImageSurGitHub(fichier, nom);
-    } catch (err) {
-      derniereErreur = err;
-    }
-  }
 
   for (const bucket of STORAGE_BUCKETS_CANDIDATS) {
     try {
@@ -348,6 +214,7 @@ export {
   orderBy,
   onSnapshot,
   serverTimestamp,
+  deleteField,
   ref,
   uploadBytes,
   getDownloadURL
