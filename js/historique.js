@@ -1,7 +1,7 @@
 // ============================================================
 // HISTORIQUE.JS — Liste complète des réservations, filtrable
 // ============================================================
-import { db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from "./firebase-config.js";
+import { db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, deleteField } from "./firebase-config.js";
 import { injecterSidebar, formaterDate, statutReservation } from "./sidebar.js";
 
 injecterSidebar("historique");
@@ -11,6 +11,144 @@ let COMPOSANTS = [];
 let MEMBRES = [];
 let RESERVATION_A_EDITER = null;
 let COMPOSANTS_PAR_LIBELLE = new Map();
+
+function localiserReservation(reservation) {
+  return String(reservation?.localisation || "").trim();
+}
+
+function normaliserRepartitionLocalisations(composant) {
+  const repartition = Array.isArray(composant?.localisationsQuantites)
+    ? composant.localisationsQuantites
+    : [];
+
+  const map = new Map();
+  repartition.forEach(item => {
+    const localisation = String(item?.localisation || "").trim();
+    const quantite = parseInt(item?.quantite, 10);
+    if (!localisation || isNaN(quantite) || quantite < 1) return;
+    map.set(localisation, (map.get(localisation) || 0) + quantite);
+  });
+
+  if (map.size === 0) {
+    const quantiteFallback = parseInt(composant?.quantite, 10) || 0;
+    const localisationFallback = String(composant?.localisation || "Stock principal").trim();
+    if (quantiteFallback > 0 && localisationFallback) {
+      map.set(localisationFallback, quantiteFallback);
+    }
+  }
+
+  return Array.from(map.entries())
+    .map(([localisation, quantite]) => ({ localisation, quantite }))
+    .sort((a, b) => (b.quantite - a.quantite) || a.localisation.localeCompare(b.localisation));
+}
+
+function calculerDisponibilitesParLocalisation(composantId, dateDebut, dateFinCompare, reservationId = "") {
+  const composant = COMPOSANTS.find(c => c.id === composantId);
+  const repartition = normaliserRepartitionLocalisations(composant);
+
+  const totalParLocalisation = new Map(repartition.map(item => [item.localisation, item.quantite]));
+  const reserveParLocalisation = new Map(repartition.map(item => [item.localisation, 0]));
+
+  let reserveSansLocalisation = 0;
+  TOUTES_RESERVATIONS
+    .filter(r => r.id !== reservationId)
+    .filter(r => r.composantId === composantId)
+    .filter(r => {
+      const finExistante = getDateFinReservation(r) || "9999-12-31";
+      return r.dateDebut <= dateFinCompare && finExistante >= dateDebut;
+    })
+    .forEach(r => {
+      const q = parseInt(r.quantite, 10) || 1;
+      const localisation = localiserReservation(r);
+      if (localisation && reserveParLocalisation.has(localisation)) {
+        reserveParLocalisation.set(localisation, (reserveParLocalisation.get(localisation) || 0) + q);
+      } else {
+        reserveSansLocalisation += q;
+      }
+    });
+
+  if (reserveSansLocalisation > 0 && repartition.length > 0) {
+    const localisationPrincipale = repartition[0].localisation;
+    reserveParLocalisation.set(
+      localisationPrincipale,
+      (reserveParLocalisation.get(localisationPrincipale) || 0) + reserveSansLocalisation
+    );
+  }
+
+  const disponibilites = new Map();
+  totalParLocalisation.forEach((total, localisation) => {
+    disponibilites.set(localisation, Math.max(0, total - (reserveParLocalisation.get(localisation) || 0)));
+  });
+
+  return { disponibilites, totalParLocalisation };
+}
+
+function rafraichirSelectLocalisationReservation(reservation = null) {
+  const select = document.getElementById("r-localisation");
+  const aide = document.getElementById("r-localisation-aide");
+  if (!select) return;
+
+  const composantId = document.getElementById("r-composant")?.value || reservation?.composantId || "";
+  const dateDebut = document.getElementById("r-date-debut")?.value || "";
+  const dateFinCompare = document.getElementById("r-date-fin")?.value || "9999-12-31";
+  const reservationId = reservation?.id || RESERVATION_A_EDITER?.id || "";
+  const localisationEditee = localiserReservation(reservation || RESERVATION_A_EDITER);
+
+  if (!composantId) {
+    select.innerHTML = `<option value="">Sélectionnez d'abord un composant</option>`;
+    select.disabled = true;
+    if (aide) aide.textContent = "Choisis d'abord le composant pour voir les localisations.";
+    return;
+  }
+
+  const { disponibilites, totalParLocalisation } = calculerDisponibilitesParLocalisation(composantId, dateDebut || "0001-01-01", dateFinCompare, reservationId);
+  const localisations = Array.from(totalParLocalisation.keys());
+  const localisationsPrenables = localisations.filter(localisation => {
+    const dispo = disponibilites.get(localisation) || 0;
+    return dispo > 0 || localisation === localisationEditee;
+  });
+
+  if (localisationsPrenables.length === 0) {
+    select.innerHTML = `<option value="">Aucune localisation disponible</option>`;
+    select.disabled = true;
+    if (aide) aide.textContent = "Aucune localisation n'a de stock disponible sur la période choisie.";
+    return;
+  }
+
+  let options = `<option value="">— Sélectionner —</option>`;
+  options += localisationsPrenables.map(localisation => {
+    const dispo = disponibilites.get(localisation) || 0;
+    const total = totalParLocalisation.get(localisation) || 0;
+    return `<option value="${escapeAttr(localisation)}">${escapeHtml(localisation)} (${dispo} dispo / ${total})</option>`;
+  }).join("");
+
+  if (localisationEditee && !totalParLocalisation.has(localisationEditee)) {
+    options += `<option value="${escapeAttr(localisationEditee)}">${escapeHtml(localisationEditee)} (hors répartition actuelle)</option>`;
+  }
+
+  select.innerHTML = options;
+  select.disabled = false;
+
+  if (localisationEditee) {
+    select.value = localisationEditee;
+  } else if (localisationsPrenables.length === 1) {
+    select.value = localisationsPrenables[0];
+  }
+
+  if (aide) {
+    aide.textContent = "Choisis la localisation depuis laquelle le composant est prélevé.";
+  }
+}
+
+function getDateFinReservation(reservation) {
+  if (reservation?.dateFin) return reservation.dateFin;
+  const dateDebut = reservation?.dateDebut;
+  const duree = parseInt(reservation?.dureeJours, 10);
+  if (!dateDebut || isNaN(duree) || duree < 1) return "";
+  const d = new Date(`${dateDebut}T00:00:00`);
+  d.setDate(d.getDate() + duree - 1);
+  return d.toISOString().split("T")[0];
+}
 
 function normaliserTexteRecherche(valeur) {
   return String(valeur || "").trim().toLowerCase();
@@ -130,7 +268,7 @@ function appliquerFiltresEtAfficher() {
   const tri = document.getElementById("filtre-tri").value;
 
   let resultats = TOUTES_RESERVATIONS.filter(r => {
-    const statut = statutReservation(r.dateDebut, r.dateFin);
+    const statut = statutReservation(r.dateDebut, getDateFinReservation(r), r.dureeJours);
     if (statutVoulu && statut !== statutVoulu) return false;
     if (personne && r.personne !== personne) return false;
     if (recherche) {
@@ -164,7 +302,8 @@ function appliquerFiltresEtAfficher() {
   const labelStatut = { actif: "En cours", passe: "Terminé", futur: "À venir" };
 
   zone.innerHTML = `<div class="liste-historique">${resultats.map(r => {
-    const statut = statutReservation(r.dateDebut, r.dateFin);
+    const dateFin = getDateFinReservation(r);
+    const statut = statutReservation(r.dateDebut, dateFin, r.dureeJours);
     return `
       <div class="ligne-historique" style="grid-template-columns:auto 1fr auto auto auto auto;gap:12px;align-items:center;">
         <span class="ligne-historique__statut statut-${statut}" title="${labelStatut[statut]}"></span>
@@ -174,7 +313,7 @@ function appliquerFiltresEtAfficher() {
         </div>
         <div class="ligne-historique__projet">${escapeHtml(r.projet || "Aucun projet")}</div>
         <div class="ligne-historique__personne">${escapeHtml(r.personne)}</div>
-        <div class="ligne-historique__dates">${formaterDate(r.dateDebut)} &rarr; ${formaterDate(r.dateFin)}</div>
+        <div class="ligne-historique__dates">${formaterDate(r.dateDebut)} &rarr; ${formaterDate(dateFin)}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
           <button class="btn btn-secondaire btn-sm" type="button" data-edit-reservation="${r.id}">Modifier</button>
           <button class="btn btn-danger btn-sm" type="button" data-delete-reservation="${r.id}">Supprimer</button>
@@ -210,7 +349,7 @@ function ouvrirModaleEditionReservation(reservation) {
   document.getElementById("r-reservation-id").value = reservation.id;
   definirComposantSelectionneParId(reservation.composantId || "");
   document.getElementById("r-date-debut").value = reservation.dateDebut || "";
-  document.getElementById("r-date-fin").value = reservation.dateFin || "";
+  document.getElementById("r-date-fin").value = getDateFinReservation(reservation) || "";
   document.getElementById("r-quantite").value = reservation.quantite || "1";
   const selectPersonne = document.getElementById("r-personne");
   if (selectPersonne) {
@@ -223,6 +362,7 @@ function ouvrirModaleEditionReservation(reservation) {
   }
   document.getElementById("r-projet").value = reservation.projet || "";
   document.getElementById("r-commentaire").value = reservation.commentaire || "";
+  rafraichirSelectLocalisationReservation(reservation);
   document.getElementById("modale-reservation-titre").textContent = "Modifier une réservation";
   document.getElementById("btn-confirmer-reservation").textContent = "Enregistrer les modifications";
 }
@@ -233,12 +373,58 @@ async function enregistrerReservationDepuisHistorique() {
   const dateDebut = document.getElementById("r-date-debut").value;
   const dateFin = document.getElementById("r-date-fin").value;
   const quantite = parseInt(document.getElementById("r-quantite").value, 10);
+  const localisation = (document.getElementById("r-localisation")?.value || "").trim();
   const personne = document.getElementById("r-personne").value.trim();
   const projet = document.getElementById("r-projet").value.trim();
   const commentaire = document.getElementById("r-commentaire").value.trim();
 
   if (!reservationId || !composantId || !dateDebut || !personne || isNaN(quantite) || quantite < 1) {
     alert("Merci de renseigner le composant, la date de début, la quantité et l'emprunteur.");
+    return;
+  }
+
+  if (dateFin && dateFin < dateDebut) {
+    alert("La date de fin doit être postérieure ou égale à la date de début.");
+    return;
+  }
+
+  const selectLocalisation = document.getElementById("r-localisation");
+  if (selectLocalisation && !selectLocalisation.disabled && !localisation) {
+    alert("Merci de sélectionner la localisation de prélèvement.");
+    return;
+  }
+
+  const composant = COMPOSANTS.find(c => c.id === composantId);
+  if (!composant) {
+    alert("Le composant sélectionné est introuvable.");
+    return;
+  }
+  if (quantite > (composant.quantite || 0)) {
+    alert("La quantité empruntée ne peut pas dépasser la quantité en stock.");
+    return;
+  }
+
+  const dateFinCompare = dateFin || "9999-12-31";
+  if (selectLocalisation && !selectLocalisation.disabled) {
+    const { disponibilites } = calculerDisponibilitesParLocalisation(composantId, dateDebut, dateFinCompare, reservationId);
+    const quantiteDisponibleLocalisation = disponibilites.get(localisation) || 0;
+    if (quantite > quantiteDisponibleLocalisation) {
+      alert(`La localisation \"${localisation}\" ne dispose que de ${quantiteDisponibleLocalisation} unité(s) sur la période demandée.`);
+      return;
+    }
+  }
+
+  const quantiteReserveeDansPeriode = TOUTES_RESERVATIONS
+    .filter(r => r.id !== reservationId)
+    .filter(r => r.composantId === composantId)
+    .filter(r => {
+      const finExistante = getDateFinReservation(r) || "9999-12-31";
+      return r.dateDebut <= dateFinCompare && finExistante >= dateDebut;
+    })
+    .reduce((sum, r) => sum + (parseInt(r.quantite, 10) || 1), 0);
+
+  if (quantiteReserveeDansPeriode + quantite > (composant.quantite || 0)) {
+    alert("Cette réservation dépasse la quantité disponible pour la période sélectionnée.");
     return;
   }
 
@@ -249,8 +435,11 @@ async function enregistrerReservationDepuisHistorique() {
   try {
     await updateDoc(doc(db, "reservations", reservationId), {
       composantId,
+      composantReference: composant.reference || "",
+      localisation,
       dateDebut,
-      ...(dateFin ? { dateFin } : {}),
+      ...(dateFin ? { dateFin } : { dateFin: deleteField() }),
+      dureeJours: deleteField(),
       quantite,
       personne,
       projet,
@@ -293,6 +482,14 @@ document.querySelectorAll("[data-ajouter-membre]").forEach(btn => {
 document.getElementById("btn-confirmer-reservation").addEventListener("click", enregistrerReservationDepuisHistorique);
 document.getElementById("r-composant-recherche")?.addEventListener("change", synchroniserComposantSelectionneDepuisRecherche);
 document.getElementById("r-composant-recherche")?.addEventListener("blur", synchroniserComposantSelectionneDepuisRecherche);
+document.getElementById("r-composant-recherche")?.addEventListener("input", () => {
+  synchroniserComposantSelectionneDepuisRecherche();
+  rafraichirSelectLocalisationReservation(RESERVATION_A_EDITER);
+});
+document.getElementById("r-composant-recherche")?.addEventListener("change", () => rafraichirSelectLocalisationReservation(RESERVATION_A_EDITER));
+document.getElementById("r-composant-recherche")?.addEventListener("blur", () => rafraichirSelectLocalisationReservation(RESERVATION_A_EDITER));
+document.getElementById("r-date-debut")?.addEventListener("change", () => rafraichirSelectLocalisationReservation(RESERVATION_A_EDITER));
+document.getElementById("r-date-fin")?.addEventListener("change", () => rafraichirSelectLocalisationReservation(RESERVATION_A_EDITER));
 
 async function initialiserPageHistorique() {
   try {
