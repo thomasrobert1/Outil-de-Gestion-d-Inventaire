@@ -5,7 +5,8 @@ import {
   db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc,
   CATEGORIES, LIGNES_CREDIT,
   COLLECTIONS_REFERENTIELS,
-  chargerLibellesCollection
+  chargerLibellesCollection,
+  televerserImage
 } from "./firebase-config.js";
 import { injecterSidebar } from "./sidebar.js";
 
@@ -597,76 +598,6 @@ async function confirmerTransfertMultiLocalisation() {
   }
 }
 
-// ---- Upload image via Issue + Action ----
-function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error("Lecture du fichier image impossible."));
-    reader.readAsDataURL(file);
-  });
-}
-
-async function creerIssueUploadImage(reference, dataUrl) {
-  const token = window.localStorage.getItem("GITHUB_TOKEN") || "";
-  if (!token) {
-    throw new Error("Token GitHub manquant. Exécute: localStorage.setItem('GITHUB_TOKEN','TON_TOKEN')");
-  }
-
-  const payload = { reference, dataUrl };
-  const res = await fetch("https://api.github.com/repos/thomasrobert1/Outil-de-Gestion-d-Inventaire/issues", {
-    method: "POST",
-    headers: {
-      "Accept": "application/vnd.github+json",
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      title: `[IMG_UPLOAD] ${reference}`,
-      body: JSON.stringify(payload)
-    })
-  });
-
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`Création issue upload impossible: ${res.status} ${txt}`);
-  }
-
-  return res.json();
-}
-
-async function attendreImageDepuisIssue(issueNumber, timeoutMs = 120000, intervalMs = 3000) {
-  const token = window.localStorage.getItem("GITHUB_TOKEN") || "";
-  const started = Date.now();
-
-  while (Date.now() - started < timeoutMs) {
-    const res = await fetch(
-      `https://api.github.com/repos/thomasrobert1/Outil-de-Gestion-d-Inventaire/issues/${issueNumber}/comments`,
-      {
-        headers: {
-          "Accept": "application/vnd.github+json",
-          "Authorization": `Bearer ${token}`
-        }
-      }
-    );
-
-    if (res.ok) {
-      const comments = await res.json();
-      const marker = comments.find(c => typeof c.body === "string" && c.body.startsWith("IMAGE_SAVED"));
-      if (marker) {
-        const lines = marker.body.split("\n");
-        const imageUrlLine = lines.find(l => l.startsWith("imageUrl="));
-        const imageUrl = imageUrlLine ? imageUrlLine.replace("imageUrl=", "").trim() : "";
-        if (imageUrl) return imageUrl;
-      }
-    }
-
-    await new Promise(r => setTimeout(r, intervalMs));
-  }
-
-  throw new Error("Timeout: image non générée par GitHub Actions.");
-}
-
 [
   "filtre-recherche", "filtre-categorie", "filtre-localisation",
   "filtre-ligne-credit", "filtre-disponibilite", "filtre-groupement"
@@ -786,9 +717,7 @@ document.getElementById("btn-enregistrer-composant").addEventListener("click", a
     let photoUrl = null;
     const fichierPhoto = document.getElementById("f-photo").files[0];
     if (fichierPhoto) {
-      const dataUrl = await fileToDataUrl(fichierPhoto);
-      const issue = await creerIssueUploadImage(reference, dataUrl);
-      photoUrl = await attendreImageDepuisIssue(issue.number);
+      photoUrl = await televerserImage(fichierPhoto, "images");
     }
 
     const donnees = {
