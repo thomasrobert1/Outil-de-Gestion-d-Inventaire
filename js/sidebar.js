@@ -66,9 +66,19 @@ export function formaterDateCourte(dateStr) {
 }
 
 // Détermine si une réservation est active, passée ou future par rapport à aujourd'hui
-export function statutReservation(dateDebut, dateFin) {
+export function statutReservation(dateDebut, dateFin, dureeJours = null) {
   const aujourdhui = new Date().toISOString().split("T")[0];
-  const fin = dateFin || null;
+  let fin = dateFin || null;
+
+  if (!fin && dateDebut) {
+    const duree = parseInt(dureeJours, 10);
+    if (!isNaN(duree) && duree > 0) {
+      const d = new Date(`${dateDebut}T00:00:00`);
+      d.setDate(d.getDate() + duree - 1);
+      fin = d.toISOString().split("T")[0];
+    }
+  }
+
   if (fin && fin < aujourdhui) return "passe";
   if (dateDebut > aujourdhui) return "futur";
   return "actif";
